@@ -3,12 +3,22 @@ import api from "../api";
 import "./TeacherDashboard.css";
 
 const TeacherDashboard = () => {
-  const currentUser = JSON.parse(localStorage.getItem("user"));
-
+  const [currentUser, setCurrentUser] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // ⭐ โหลดข้อมูลผู้ใช้จาก localStorage ตอนเข้าเพจ
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    if (user) {
+      setCurrentUser(JSON.parse(user));
+    } else {
+      setCurrentUser(null);
+    }
+  }, []);
+
+  // ⭐ โหลดข้อมูล dashboard ของครู
   useEffect(() => {
     if (!currentUser || currentUser.role !== "teacher") return;
 
@@ -26,13 +36,23 @@ const TeacherDashboard = () => {
     };
 
     loadDashboard();
-  }, []);
+  }, [currentUser]);
 
-  if (!currentUser || currentUser.role !== "teacher") {
+  // ถ้า user ยังโหลดไม่เสร็จ ให้โชว์โหลดก่อน
+  if (currentUser === null) {
+    return (
+      <div className="tdb-page">
+        <div className="tdb-card tdb-card-muted">กำลังโหลดข้อมูลผู้ใช้...</div>
+      </div>
+    );
+  }
+
+  // ถ้าไม่ใช่ครู → ห้ามเข้า
+  if (currentUser.role !== "teacher") {
     return (
       <div className="tdb-page">
         <div className="tdb-card tdb-card-warning">
-          <p>หน้านี้สำหรับคุณครูเท่านั้น</p>
+          หน้านี้สำหรับคุณครูเท่านั้น
         </div>
       </div>
     );
@@ -50,13 +70,16 @@ const TeacherDashboard = () => {
 
   return (
     <div className="tdb-page">
+
+      {/* Header */}
       <header className="tdb-header">
         <div>
           <h1 className="tdb-title">แดชบอร์ดคุณครู</h1>
           <p className="tdb-subtitle">
-            {currentUser.name} · {currentUser.subject || "ไม่ระบุวิชา"}
+            {currentUser.name} · {currentUser.subject || "วิชาไม่ระบุ"}
           </p>
         </div>
+
         <span className="tdb-date">
           {new Date().toLocaleDateString("th-TH", {
             day: "2-digit",
@@ -72,10 +95,12 @@ const TeacherDashboard = () => {
           <p className="tdb-stat-label">จำนวนใบงาน</p>
           <p className="tdb-stat-value">{totalAssignments}</p>
         </div>
+
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">ยอดส่งงานรวม</p>
           <p className="tdb-stat-value">{totalSubmitted}</p>
         </div>
+
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">เฉลี่ยต่อใบงาน</p>
           <p className="tdb-stat-value">{avgSubmit}</p>
@@ -83,7 +108,7 @@ const TeacherDashboard = () => {
         </div>
       </section>
 
-      {/* Main Table */}
+      {/* Table */}
       <section className="tdb-main">
         <div className="tdb-main-header">
           <h2>ใบงานล่าสุด</h2>
@@ -116,10 +141,10 @@ const TeacherDashboard = () => {
                 {assignments.map((a, idx) => (
                   <tr key={a.assignment_id}>
                     <td>{idx + 1}</td>
-                    <td>{a.title}</td>
+                    <td className="tdb-cell-title">{a.title}</td>
                     <td>
                       <span className="tdb-badge">
-                        {a.submitted_count} คน
+                        {a.submitted_count || 0} ส่งแล้ว
                       </span>
                     </td>
                     <td>
