@@ -1,25 +1,43 @@
-// frontend/src/pages/Home.jsx
+// src/pages/Home.jsx
 import React, { useState } from "react";
-import Subjects from "./Subjects.jsx";
-import SubjectAssignments from "./SubjectAssignments.jsx";
+
+import SubjectsNew from "./SubjectsNew.jsx";
+import SubjectPage from "./SubjectPage.jsx";
+import AssignmentDetail from "./AssignmentDetail.jsx";
+
+import StudentDashboard from "./StudentDashboard.jsx";
+import AssignmentsCalendar from "./AssignmentsCalendar.jsx";
+
 import TeacherDashboard from "./TeacherDashboard.jsx";
 import ChatPage from "./Chat.jsx";
 import Profile from "./Profile.jsx";
 
 export default function Home({ user, setUser, onLogout }) {
-  const [active, setActive] = useState("subjects");
-  const [selectedSubject, setSelectedSubject] = useState(null);
+  const [active, setActive] = useState("studentDashboard"); // เริ่มที่ dashboard นักเรียน
 
-  const selectSubject = (s) => {
-    setSelectedSubject(s);
-    setActive("assignments");
-  };
+  const [selectedSubject, setSelectedSubject] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
 
   const isTeacher = user.role === "teacher";
+
+  const handleSelectSubject = (subject) => {
+    setSelectedSubject(subject);
+    setActive("subjectDetail");
+  };
+
+  const handleOpenAssignment = (assignment) => {
+    setSelectedAssignment(assignment);
+    setActive("assignmentDetail");
+  };
+
+  const handleSubjectChat = () => {
+    setActive("chat");
+  };
 
   return (
     <div className="app-shell">
       <div className="layout-main">
+        {/* SIDEBAR */}
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="logo-circle">T</div>
@@ -33,47 +51,82 @@ export default function Home({ user, setUser, onLogout }) {
             </div>
           </div>
 
+          {/* Dashboard นักเรียน (เฉพาะ student) */}
+          {!isTeacher && (
+            <button
+              className={
+                "sidebar-item" +
+                (active === "studentDashboard" ? " sidebar-item-active" : "")
+              }
+              onClick={() => setActive("studentDashboard")}
+            >
+              🏠 Dashboard นักเรียน
+            </button>
+          )}
+
+          {/* Dashboard ครู */}
+          {isTeacher && (
+            <button
+              className={
+                "sidebar-item" +
+                (active === "teacherDashboard" ? " sidebar-item-active" : "")
+              }
+              onClick={() => setActive("teacherDashboard")}
+            >
+              📊 สรุปใบงาน (ครู)
+            </button>
+          )}
+
+          {/* Subjects */}
           <button
             className={
-              "sidebar-item" + (active === "subjects" ? " sidebar-item-active" : "")
+              "sidebar-item" +
+              (active === "subjects" ? " sidebar-item-active" : "")
             }
             onClick={() => setActive("subjects")}
           >
             🗂 รายวิชา
           </button>
 
+          {/* รายละเอียดวิชา */}
           <button
+            disabled={!selectedSubject}
             className={
               "sidebar-item" +
-              (active === "assignments" ? " sidebar-item-active" : "")
+              (active === "subjectDetail" ? " sidebar-item-active" : "")
             }
-            onClick={() => setActive("assignments")}
-            disabled={!selectedSubject}
+            onClick={() =>
+              selectedSubject && setActive("subjectDetail")
+            }
           >
-            📄 ใบงานในวิชา
+            📘 รายละเอียดวิชา
           </button>
 
-          {isTeacher && (
+          {/* ปฏิทินงาน */}
+          {!isTeacher && (
             <button
               className={
                 "sidebar-item" +
-                (active === "dashboard" ? " sidebar-item-active" : "")
+                (active === "calendar" ? " sidebar-item-active" : "")
               }
-              onClick={() => setActive("dashboard")}
+              onClick={() => setActive("calendar")}
             >
-              📊 สรุปใบงาน (ครู)
+              📆 ปฏิทินงาน
             </button>
           )}
 
+          {/* Chat */}
           <button
             className={
-              "sidebar-item" + (active === "chat" ? " sidebar-item-active" : "")
+              "sidebar-item" +
+              (active === "chat" ? " sidebar-item-active" : "")
             }
             onClick={() => setActive("chat")}
           >
             💬 ห้องแชท
           </button>
 
+          {/* Profile */}
           <button
             className={
               "sidebar-item" +
@@ -84,26 +137,64 @@ export default function Home({ user, setUser, onLogout }) {
             👤 โปรไฟล์
           </button>
 
+          {/* Logout */}
           <button className="sidebar-item logout-btn" onClick={onLogout}>
             🚪 ออกจากระบบ
           </button>
         </aside>
 
+        {/* MAIN */}
         <main className="main-panel">
-          {active === "subjects" && (
-            <Subjects user={user} onSelect={selectSubject} />
+          {/* STUDENT DASHBOARD */}
+          {!isTeacher && active === "studentDashboard" && (
+            <StudentDashboard
+              user={user}
+              onOpenAssignment={handleOpenAssignment}
+            />
           )}
 
-          {active === "assignments" && selectedSubject && (
-            <SubjectAssignments user={user} subject={selectedSubject} />
-          )}
-
-          {active === "dashboard" && isTeacher && (
+          {/* TEACHER DASHBOARD */}
+          {isTeacher && active === "teacherDashboard" && (
             <TeacherDashboard user={user} />
           )}
 
+          {/* SUBJECTS LIST */}
+          {active === "subjects" && (
+            <SubjectsNew user={user} onSelect={handleSelectSubject} />
+          )}
+
+          {/* SUBJECT PAGE (detail + assignments + sort) */}
+          {active === "subjectDetail" && selectedSubject && (
+            <SubjectPage
+              subject={selectedSubject}
+              user={user}
+              onBack={() => setActive("subjects")}
+              onOpenAssignment={handleOpenAssignment}
+              onOpenChat={handleSubjectChat}
+            />
+          )}
+
+          {/* ASSIGNMENT DETAIL */}
+          {active === "assignmentDetail" && selectedAssignment && (
+            <AssignmentDetail
+              assignment={selectedAssignment}
+              user={user}
+              onBack={() => setActive("subjectDetail")}
+            />
+          )}
+
+          {/* CALENDAR VIEW */}
+          {!isTeacher && active === "calendar" && (
+            <AssignmentsCalendar
+              user={user}
+              onOpenAssignment={handleOpenAssignment}
+            />
+          )}
+
+          {/* CHAT */}
           {active === "chat" && <ChatPage user={user} />}
 
+          {/* PROFILE */}
           {active === "profile" && (
             <Profile
               user={user}
