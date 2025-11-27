@@ -758,6 +758,32 @@ io.on("connection", (socket) => {
   });
 });
 
+io.on("connection", (socket) => {
+  console.log("user connected:", socket.id);
+
+  // ระบุ user_id
+  socket.on("user:online", (userId) => {
+    socket.userId = userId;
+    io.emit("user:online", userId);
+  });
+
+  socket.on("disconnect", () => {
+    if (socket.userId) {
+      io.emit("user:offline", socket.userId);
+    }
+  });
+
+  // Typing indicator
+  socket.on("chat:typing:start", ({ from, to }) => {
+    io.emit("chat:typing:start", { from, to });
+  });
+
+  socket.on("chat:typing:stop", ({ from, to }) => {
+    io.emit("chat:typing:stop", { from, to });
+  });
+});
+
+
 // ===== START SERVER (ใช้ httpServer อย่างเดียว) =====
 httpServer.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);
