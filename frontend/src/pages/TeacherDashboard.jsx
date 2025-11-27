@@ -2,30 +2,18 @@ import React, { useEffect, useState } from "react";
 import api from "../api";
 import "./TeacherDashboard.css";
 
-const TeacherDashboard = () => {
-  const [currentUser, setCurrentUser] = useState(null);
+const TeacherDashboard = ({ user }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ⭐ โหลดข้อมูลผู้ใช้จาก localStorage ตอนเข้าเพจ
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (user) {
-      setCurrentUser(JSON.parse(user));
-    } else {
-      setCurrentUser(null);
-    }
-  }, []);
-
-  // ⭐ โหลดข้อมูล dashboard ของครู
-  useEffect(() => {
-    if (!currentUser || currentUser.role !== "teacher") return;
+    if (!user || user.role !== "teacher") return;
 
     const loadDashboard = async () => {
       try {
         setLoading(true);
-        const res = await api.get(`/dashboard/teacher/${currentUser.id}`);
+        const res = await api.get(`/dashboard/teacher/${user.id}`);
         setAssignments(res.data || []);
       } catch (err) {
         console.error(err);
@@ -36,23 +24,14 @@ const TeacherDashboard = () => {
     };
 
     loadDashboard();
-  }, [currentUser]);
+  }, [user]);
 
-  // ถ้า user ยังโหลดไม่เสร็จ ให้โชว์โหลดก่อน
-  if (currentUser === null) {
-    return (
-      <div className="tdb-page">
-        <div className="tdb-card tdb-card-muted">กำลังโหลดข้อมูลผู้ใช้...</div>
-      </div>
-    );
-  }
-
-  // ถ้าไม่ใช่ครู → ห้ามเข้า
-  if (currentUser.role !== "teacher") {
+  // ถ้าไม่ใช่ครู
+  if (!user || user.role !== "teacher") {
     return (
       <div className="tdb-page">
         <div className="tdb-card tdb-card-warning">
-          หน้านี้สำหรับคุณครูเท่านั้น
+          <p>หน้านี้สำหรับคุณครูเท่านั้น</p>
         </div>
       </div>
     );
@@ -71,15 +50,14 @@ const TeacherDashboard = () => {
   return (
     <div className="tdb-page">
 
-      {/* Header */}
+      {/* HEADER */}
       <header className="tdb-header">
         <div>
           <h1 className="tdb-title">แดชบอร์ดคุณครู</h1>
           <p className="tdb-subtitle">
-            {currentUser.name} · {currentUser.subject || "วิชาไม่ระบุ"}
+            {user.name} · {user.subject || "ไม่ระบุวิชา"}
           </p>
         </div>
-
         <span className="tdb-date">
           {new Date().toLocaleDateString("th-TH", {
             day: "2-digit",
@@ -89,7 +67,7 @@ const TeacherDashboard = () => {
         </span>
       </header>
 
-      {/* Stats */}
+      {/* STATS */}
       <section className="tdb-stats">
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">จำนวนใบงาน</p>
@@ -97,7 +75,7 @@ const TeacherDashboard = () => {
         </div>
 
         <div className="tdb-stat-card">
-          <p className="tdb-stat-label">ยอดส่งงานรวม</p>
+          <p className="tdb-stat-label">ยอดส่งทั้งหมด</p>
           <p className="tdb-stat-value">{totalSubmitted}</p>
         </div>
 
@@ -108,7 +86,7 @@ const TeacherDashboard = () => {
         </div>
       </section>
 
-      {/* Table */}
+      {/* TABLE */}
       <section className="tdb-main">
         <div className="tdb-main-header">
           <h2>ใบงานล่าสุด</h2>
@@ -155,10 +133,12 @@ const TeacherDashboard = () => {
                   </tr>
                 ))}
               </tbody>
+
             </table>
           </div>
         )}
       </section>
+
     </div>
   );
 };
