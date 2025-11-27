@@ -730,6 +730,26 @@ app.get("/chat/thread", (req, res) => {
   );
 });
 
+app.get("/dashboard/teacher/:teacherId", (req, res) => {
+  const { teacherId } = req.params;
+  db.all(
+    `SELECT a.id AS assignment_id, a.title,
+            COUNT(s.id) AS submitted_count
+     FROM assignments a
+     JOIN subjects sub ON a.subject_id = sub.id
+     LEFT JOIN submissions s ON s.assignment_id = a.id
+     WHERE sub.teacher_id = ?
+     GROUP BY a.id
+     ORDER BY a.id DESC`,
+    [teacherId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+
 // ===== Socket.IO =====
 io.on("connection", (socket) => {
   // console.log("Client connected", socket.id);
