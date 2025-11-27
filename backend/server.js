@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
 
+// ===== PATHS & FILES =====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -19,9 +20,11 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// ===== DB INIT =====
 sqlite3.verbose();
 const db = new sqlite3.Database(DB_FILE);
 
+// ===== SERVER & SOCKET.IO =====
 const app = express();
 const httpServer = http.createServer(app);
 const io = new SocketIOServer(httpServer, {
@@ -30,9 +33,15 @@ const io = new SocketIOServer(httpServer, {
 
 const PORT = process.env.PORT || 4000;
 
+// ===== MIDDLEWARE =====
 app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
+
+// ===== ROOT HEALTH CHECK (สำคัญสำหรับ Render / UptimeRobot) =====
+app.get("/", (req, res) => {
+  res.status(200).send("Backend is running");
+});
 
 // ===== Multer =====
 const storage = multer.diskStorage({
@@ -44,7 +53,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ===== DB INIT =====
+// ===== DB SCHEMA & SEED =====
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -729,6 +738,7 @@ io.on("connection", (socket) => {
   });
 });
 
+// ===== START SERVER (ใช้ httpServer อย่างเดียว) =====
 httpServer.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);
   console.log(`📦 DB: ${DB_FILE}`);
