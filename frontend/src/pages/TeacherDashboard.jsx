@@ -3,8 +3,7 @@ import api from "../api";
 import "./TeacherDashboard.css";
 
 const TeacherDashboard = () => {
-  // ✔ แก้ตรงนี้ → ใช้ key ให้ตรงกับตอน Login
-  const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+  const currentUser = JSON.parse(localStorage.getItem("user"));
 
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,17 +66,16 @@ const TeacherDashboard = () => {
         </span>
       </header>
 
+      {/* Stats */}
       <section className="tdb-stats">
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">จำนวนใบงาน</p>
           <p className="tdb-stat-value">{totalAssignments}</p>
         </div>
-
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">ยอดส่งงานรวม</p>
           <p className="tdb-stat-value">{totalSubmitted}</p>
         </div>
-
         <div className="tdb-stat-card">
           <p className="tdb-stat-label">เฉลี่ยต่อใบงาน</p>
           <p className="tdb-stat-value">{avgSubmit}</p>
@@ -85,6 +83,7 @@ const TeacherDashboard = () => {
         </div>
       </section>
 
+      {/* Main Table */}
       <section className="tdb-main">
         <div className="tdb-main-header">
           <h2>ใบงานล่าสุด</h2>
@@ -117,10 +116,10 @@ const TeacherDashboard = () => {
                 {assignments.map((a, idx) => (
                   <tr key={a.assignment_id}>
                     <td>{idx + 1}</td>
-                    <td className="tdb-cell-title">{a.title}</td>
+                    <td>{a.title}</td>
                     <td>
                       <span className="tdb-badge">
-                        {a.submitted_count || 0} ส่งแล้ว
+                        {a.submitted_count} คน
                       </span>
                     </td>
                     <td>
