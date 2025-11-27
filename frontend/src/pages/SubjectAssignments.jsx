@@ -1,6 +1,7 @@
 // frontend/src/pages/SubjectAssignments.jsx
 import React, { useEffect, useState } from "react";
 import api from "../api.js";
+import socket from "../socket";
 
 export default function SubjectAssignments({ user, subject }) {
   const [assignments, setAssignments] = useState([]);
@@ -38,6 +39,7 @@ export default function SubjectAssignments({ user, subject }) {
   };
 
   const loadSubmissions = async (assignment) => {
+    if (!assignment) return;
     try {
       const res = await api.get(`/submissions/${assignment.id}`);
       setSubmissions(res.data || []);
@@ -53,6 +55,35 @@ export default function SubjectAssignments({ user, subject }) {
       loadAssignments();
     }
   }, [subject?.id]);
+
+  // 🔥 Realtime listener
+  useEffect(() => {
+    const s = socket;
+
+    const handleAssignmentsUpdated = (payload) => {
+      // payload: { type, subject_id, assignment }
+      if (!subject?.id) return;
+      if (payload.subject_id === subject.id) {
+        loadAssignments();
+      }
+    };
+
+    const handleSubmissionsUpdated = (payload) => {
+      // payload: { assignment_id, student_id, graded? }
+      if (!selectedAssignment) return;
+      if (payload.assignment_id === selectedAssignment.id) {
+        loadSubmissions(selectedAssignment);
+      }
+    };
+
+    s.on("assignments:updated", handleAssignmentsUpdated);
+    s.on("submissions:updated", handleSubmissionsUpdated);
+
+    return () => {
+      s.off("assignments:updated", handleAssignmentsUpdated);
+      s.off("submissions:updated", handleSubmissionsUpdated);
+    };
+  }, [subject?.id, selectedAssignment?.id]);
 
   const openAssignment = (a) => {
     setSelectedAssignment(a);
@@ -88,6 +119,7 @@ export default function SubjectAssignments({ user, subject }) {
       const res = await api.post("/assignments", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      // ตรงนี้ถึงจะมี realtime อยู่แล้ว แต่เราเก็บ local ไว้ด้วยก็ไม่เสียหาย
       setAssignments((prev) => [res.data, ...prev]);
       setTitle("");
       setDesc("");
@@ -322,48 +354,47 @@ export default function SubjectAssignments({ user, subject }) {
               )}
 
               {/* รายชื่อผู้ส่งงาน */}
-<div className="card-subsection">
-  <h4 className="card-subtitle">
-    {isTeacher
-      ? `รายชื่อนักเรียนที่ส่งงาน (${submissions.length})`
-      : "งานที่ฉันส่ง"}
-  </h4>
+              <div className="card-subsection">
+                <h4 className="card-subtitle">
+                  {isTeacher
+                    ? `รายชื่อนักเรียนที่ส่งงาน (${submissions.length})`
+                    : "งานที่ฉันส่ง"}
+                </h4>
 
-  {/* นักเรียน: แสดงเฉพาะงานของตัวเอง */}
-  {!isTeacher && (
-    <div>
-      {mySubmission ? (
-        <SubmissionRow
-          submission={mySubmission}
-          isTeacher={false}
-          onSave={() => {}}
-        />
-      ) : (
-        <div className="text-sm">ยังไม่ได้ส่งงาน</div>
-      )}
-    </div>
-  )}
+                {/* นักเรียน: แสดงเฉพาะงานของตัวเอง */}
+                {!isTeacher && (
+                  <div>
+                    {mySubmission ? (
+                      <SubmissionRow
+                        submission={mySubmission}
+                        isTeacher={false}
+                        onSave={() => {}}
+                      />
+                    ) : (
+                      <div className="text-sm">ยังไม่ได้ส่งงาน</div>
+                    )}
+                  </div>
+                )}
 
-  {/* ครู: แสดงรายชื่อทั้งหมด */}
-  {isTeacher && (
-    <div className="submission-list">
-      {submissions.length === 0 && (
-        <div className="text-sm">ยังไม่มีใครส่งงาน</div>
-      )}
-      {submissions.map((s) => (
-        <SubmissionRow
-          key={s.id}
-          submission={s}
-          isTeacher={true}
-          onSave={(grade, feedback) =>
-            updateGrade(s.id, grade, feedback)
-          }
-        />
-      ))}
-    </div>
-  )}
-</div>
-
+                {/* ครู: แสดงรายชื่อทั้งหมด */}
+                {isTeacher && (
+                  <div className="submission-list">
+                    {submissions.length === 0 && (
+                      <div className="text-sm">ยังไม่มีใครส่งงาน</div>
+                    )}
+                    {submissions.map((s) => (
+                      <SubmissionRow
+                        key={s.id}
+                        submission={s}
+                        isTeacher={true}
+                        onSave={(grade, feedback) =>
+                          updateGrade(s.id, grade, feedback)
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

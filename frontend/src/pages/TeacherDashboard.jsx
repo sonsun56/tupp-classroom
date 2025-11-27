@@ -1,144 +1,70 @@
 import React, { useEffect, useState } from "react";
 import api from "../api";
+import socket from "../socket";
 import "./TeacherDashboard.css";
 
-const TeacherDashboard = ({ user }) => {
+const TeacherDashboard = ({ currentUser }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const loadDashboard = async () => {
+    if (!currentUser || currentUser.role !== "teacher") return;
+    try {
+      setLoading(true);
+      const res = await api.get(`/dashboard/teacher/${currentUser.id}`);
+      setAssignments(res.data || []);
+      setError("");
+    } catch (err) {
+      console.error(err);
+      setError("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!user || user.role !== "teacher") return;
-
-    const loadDashboard = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get(`/dashboard/teacher/${user.id}`);
-        setAssignments(res.data || []);
-      } catch (err) {
-        console.error(err);
-        setError("โหลดข้อมูลไม่สำเร็จ");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadDashboard();
-  }, [user]);
+  }, [currentUser?.id]);
 
-  // ถ้าไม่ใช่ครู
-  if (!user || user.role !== "teacher") {
-    return (
-      <div className="tdb-page">
-        <div className="tdb-card tdb-card-warning">
-          <p>หน้านี้สำหรับคุณครูเท่านั้น</p>
-        </div>
-      </div>
-    );
-  }
+  // === Realtime ===
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "teacher") return;
 
-  const totalAssignments = assignments.length;
-  const totalSubmitted = assignments.reduce(
-    (sum, a) => sum + (a.submitted_count || 0),
-    0
-  );
-  const avgSubmit =
-    totalAssignments === 0
-      ? 0
-      : Math.round(totalSubmitted / totalAssignments);
+    const s = socket;
+    const refresh = () => loadDashboard();
+
+    s.on("assignments:updated", refresh);
+    s.on("submissions:updated", refresh);
+
+    return () => {
+      s.off("assignments:updated", refresh);
+      s.off("submissions:updated", refresh);
+    };
+  }, [currentUser?.id]);
+
+  if (loading) return <p>กำลังโหลด...</p>;
+  if (error) return <p>{error}</p>;
 
   return (
-    <div className="tdb-page">
+    <div className="teacher-dashboard">
+      <h2>📘 Dashboard คุณครู</h2>
 
-      {/* HEADER */}
-      <header className="tdb-header">
-        <div>
-          <h1 className="tdb-title">แดชบอร์ดคุณครู</h1>
-          <p className="tdb-subtitle">
-            {user.name} · {user.subject || "ไม่ระบุวิชา"}
-          </p>
+      {assignments.length === 0 ? (
+        <p>ยังไม่มีงานที่คุณสร้างไว้</p>
+      ) : (
+        <div className="assignment-list">
+          {assignments.map((a) => (
+            <div key={a.id} className="assignment-card">
+              <h3>{a.title}</h3>
+              <p>วิชา: {a.subject_name}</p>
+              <p>ห้อง: {a.classroom}</p>
+              <p>ส่งแล้ว: {a.submissions_count} คน</p>
+              <p>ครบกำหนด: {a.due_date}</p>
+            </div>
+          ))}
         </div>
-        <span className="tdb-date">
-          {new Date().toLocaleDateString("th-TH", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
-        </span>
-      </header>
-
-      {/* STATS */}
-      <section className="tdb-stats">
-        <div className="tdb-stat-card">
-          <p className="tdb-stat-label">จำนวนใบงาน</p>
-          <p className="tdb-stat-value">{totalAssignments}</p>
-        </div>
-
-        <div className="tdb-stat-card">
-          <p className="tdb-stat-label">ยอดส่งทั้งหมด</p>
-          <p className="tdb-stat-value">{totalSubmitted}</p>
-        </div>
-
-        <div className="tdb-stat-card">
-          <p className="tdb-stat-label">เฉลี่ยต่อใบงาน</p>
-          <p className="tdb-stat-value">{avgSubmit}</p>
-          <span className="tdb-stat-unit">ครั้ง</span>
-        </div>
-      </section>
-
-      {/* TABLE */}
-      <section className="tdb-main">
-        <div className="tdb-main-header">
-          <h2>ใบงานล่าสุด</h2>
-          <span className="tdb-main-count">
-            ทั้งหมด {assignments.length} ใบงาน
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="tdb-card tdb-card-muted">กำลังโหลด...</div>
-        ) : error ? (
-          <div className="tdb-card tdb-card-error">{error}</div>
-        ) : assignments.length === 0 ? (
-          <div className="tdb-card tdb-card-muted">
-            ยังไม่มีใบงาน ลองสร้างใบงานแรกเลย!
-          </div>
-        ) : (
-          <div className="tdb-card tdb-table-wrapper">
-            <table className="tdb-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>ชื่อใบงาน</th>
-                  <th>ส่งแล้ว</th>
-                  <th>จัดการ</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {assignments.map((a, idx) => (
-                  <tr key={a.assignment_id}>
-                    <td>{idx + 1}</td>
-                    <td className="tdb-cell-title">{a.title}</td>
-                    <td>
-                      <span className="tdb-badge">
-                        {a.submitted_count || 0} ส่งแล้ว
-                      </span>
-                    </td>
-                    <td>
-                      <button className="tdb-btn-outline">
-                        ดูรายละเอียด
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-
-            </table>
-          </div>
-        )}
-      </section>
-
+      )}
     </div>
   );
 };

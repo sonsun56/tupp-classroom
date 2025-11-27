@@ -48,7 +48,3 @@ export default function App() {
 
   return <Home user={user} setUser={setUser} onLogout={handleLogout} />;
 }
-
-import TeacherDashboard from "./pages/TeacherDashboard";
-
-<Route path="/teacher/dashboard" element={<TeacherDashboard />} />

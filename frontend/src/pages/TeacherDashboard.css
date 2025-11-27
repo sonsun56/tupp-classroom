@@ -1,197 +1,226 @@
-/* =============================== */
-/* Layout พื้นหลังแบบ pastel blur */
-/* =============================== */
 .tdb-page {
-  padding: 25px;
-  height: 100%;
+  padding: 32px 24px 40px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #ffe9f3, #f0e7ff);
+  background: radial-gradient(circle at top left, #ffe4f3 0, #f5ecff 40%, #ffffff 100%);
 }
 
-/* =============================== */
 /* Header */
-/* =============================== */
 .tdb-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 25px;
+  justify-content: space-between;
+  margin-bottom: 24px;
 }
 
 .tdb-title {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
-  color: #4b2e83;
+  letter-spacing: 0.03em;
+  color: #2a2340;
 }
 
 .tdb-subtitle {
-  font-size: 15px;
-  color: #7d6a9f;
-  margin-top: 2px;
+  margin-top: 4px;
+  color: #7a6fa8;
+  font-size: 14px;
+}
+
+.tdb-header-right {
+  text-align: right;
 }
 
 .tdb-date {
-  font-size: 14px;
-  color: #9c8cc5;
-  background: #f5efff;
+  font-size: 13px;
   padding: 6px 12px;
-  border-radius: 12px;
-  border: 1px solid #e3d9ff;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(151, 149, 240, 0.3);
+  color: #6154c2;
 }
 
-/* =============================== */
-/* Stats */
-/* =============================== */
+/* Stats cards */
 .tdb-stats {
-  display: flex;
-  gap: 18px;
-  margin-bottom: 25px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .tdb-stat-card {
-  background: white;
-  padding: 18px 22px;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(180, 160, 255, 0.15);
-  flex: 1;
-  border: 1px solid #f0e7ff;
+  padding: 16px 18px;
+  border-radius: 20px;
+  backdrop-filter: blur(14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(244, 234, 255, 0.95)
+  );
+  border: 1px solid rgba(201, 189, 255, 0.7);
+  box-shadow: 0 14px 35px rgba(123, 73, 190, 0.12);
 }
 
 .tdb-stat-label {
-  font-size: 14px;
-  color: #7d6a9f;
+  font-size: 13px;
+  color: #8b7fb3;
 }
 
 .tdb-stat-value {
-  font-size: 30px;
-  font-weight: 700;
   margin-top: 6px;
-  color: #4b2e83;
+  font-size: 24px;
+  font-weight: 700;
+  color: #2a2340;
 }
 
 .tdb-stat-unit {
-  font-size: 12px;
-  color: #9a8ccc;
+  font-size: 11px;
+  color: #a199d8;
 }
 
-/* =============================== */
-/* Main Section */
-/* =============================== */
+/* Main area */
+.tdb-main {
+  margin-top: 12px;
+}
+
 .tdb-main-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 15px;
+  align-items: baseline;
+  margin-bottom: 8px;
 }
 
 .tdb-main-header h2 {
-  font-size: 20px;
-  color: #4b2e83;
+  font-size: 18px;
   font-weight: 600;
+  color: #33284d;
 }
 
 .tdb-main-count {
-  font-size: 14px;
-  color: #8e7fbf;
+  font-size: 13px;
+  color: #9a90c8;
 }
 
-/* =============================== */
 /* Cards */
-/* =============================== */
 .tdb-card {
+  padding: 16px 18px;
+  border-radius: 18px;
   background: #ffffff;
-  padding: 20px;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(160, 140, 255, 0.12);
-  border: 1px solid #f1e8ff;
-  margin-bottom: 15px;
-  text-align: center;
-  font-size: 15px;
+  border: 1px solid rgba(225, 217, 255, 0.9);
+  box-shadow: 0 10px 25px rgba(155, 125, 255, 0.08);
 }
 
 .tdb-card-muted {
-  background: #faf6ff;
-  border: 1px solid #e8ddff;
-  color: #7d6a9f;
-}
-
-.tdb-card-warning {
-  background: #fff4dc;
-  border: 1px solid #ffe2a9;
-  color: #8a6518;
+  color: #7f779f;
+  font-size: 14px;
 }
 
 .tdb-card-error {
-  background: #ffe6e6;
-  border: 1px solid #ffbcbc;
-  color: #b84444;
+  color: #b3263e;
+  border-color: rgba(255, 163, 190, 0.8);
+  background: #fff3f5;
 }
 
-/* =============================== */
+.tdb-card-warning {
+  color: #b25c00;
+  border-color: rgba(255, 200, 120, 0.8);
+  background: #fff8e6;
+}
+
 /* Table */
-/* =============================== */
 .tdb-table-wrapper {
-  overflow-x: auto;
+  padding: 0;
 }
 
 .tdb-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
 }
 
-.tdb-table th {
-  padding: 12px;
-  background: #f5efff;
-  color: #6f5fa0;
-  font-weight: 600;
-  border-bottom: 2px solid #eadfff;
+.tdb-table thead {
+  background: linear-gradient(
+    90deg,
+    rgba(244, 239, 255, 0.9),
+    rgba(255, 246, 252, 0.9)
+  );
+}
+
+.tdb-table th,
+.tdb-table td {
+  padding: 10px 14px;
   text-align: left;
 }
 
-.tdb-table td {
-  padding: 14px 12px;
-  border-bottom: 1px solid #f2eaff;
-  color: #4b2e83;
+.tdb-table th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8e84c5;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tdb-table tbody tr:nth-child(even) {
+  background: #faf7ff;
+}
+
+.tdb-table tbody tr:hover {
+  background: #f3ecff;
 }
 
 .tdb-cell-title {
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #342752;
 }
 
-.tdb-badge {
-  background: #f0e7ff;
-  padding: 4px 10px;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #6b54aa;
-  border: 1px solid #e6dbff;
-}
-
-/* =============================== */
-/* Buttons */
-/* =============================== */
-.tdb-btn-outline {
-  padding: 6px 14px;
-  border-radius: 10px;
-  border: 1px solid #c6b5ff;
-  background: white;
-  color: #6248c2;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.tdb-btn-outline:hover {
-  background: #f4eeff;
-  border-color: #b8a3ff;
-}
-
-/* =============================== */
-/* Dot (ถ้าอยากใช้ใน table) */
-/* =============================== */
 .tdb-dot {
   width: 8px;
   height: 8px;
-  background: #c29fff;
-  border-radius: 50%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff9ac6, #9b8cff);
+  box-shadow: 0 0 8px rgba(210, 140, 255, 0.8);
+}
+
+.tdb-badge {
   display: inline-block;
-  margin-right: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(151, 149, 240, 0.1);
+  color: #5b4fd4;
+  border: 1px solid rgba(151, 149, 240, 0.4);
+}
+
+/* Buttons */
+.tdb-btn-outline {
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid #b39dfb;
+  background: #ffffff;
+  color: #5a3fb3;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+
+.tdb-btn-outline:hover {
+  background: linear-gradient(90deg, #fdd8f5, #d9d3ff);
+  color: #24163e;
+  box-shadow: 0 6px 18px rgba(171, 133, 255, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .tdb-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .tdb-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tdb-header-right {
+    align-self: flex-start;
+  }
 }
