@@ -3,8 +3,8 @@ import api from "../api";
 import "./TeacherDashboard.css";
 
 const TeacherDashboard = () => {
-  // ดึงข้อมูลผู้ใช้จาก localStorage
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  // ✔ แก้ตรงนี้ → ใช้ key ให้ตรงกับตอน Login
+  const currentUser = JSON.parse(localStorage.getItem("currentUser"));
 
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
