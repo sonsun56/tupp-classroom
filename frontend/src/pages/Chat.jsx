@@ -1,7 +1,7 @@
 // frontend/src/pages/Chat.jsx
 import React, { useEffect, useState, useRef } from "react";
 import api from "../api";
-import socket from "../socket"; // ใช้ socket กลาง
+import socket from "../socket";
 
 export default function Chat({ user }) {
   const [users, setUsers] = useState([]);
@@ -12,26 +12,21 @@ export default function Chat({ user }) {
   const msgEndRef = useRef(null);
   const socketRef = useRef(socket);
 
-  // Auto scroll
   const scrollDown = () => {
     setTimeout(() => {
       msgEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 50);
   };
 
-  // โหลดรายชื่อ users ที่คุยได้
   const loadUsers = async () => {
     try {
       const res = await api.get("/users");
-      // filter ตัวเองออก
-      const us = res.data.filter((u) => u.id !== user.id);
-      setUsers(us);
+      setUsers(res.data.filter((u) => u.id !== user.id));
     } catch (e) {
       console.error(e);
     }
   };
 
-  // โหลด messages 1:1
   const loadThread = async (targetUser) => {
     try {
       const res = await api.get("/chat/thread", {
@@ -47,20 +42,19 @@ export default function Chat({ user }) {
     }
   };
 
-  // ตั้งเป้าหมายที่จะคุย
   const selectUser = (u) => {
     setTarget(u);
     loadThread(u);
   };
 
-  // ส่งข้อความ
+  // 🔥 แก้ชื่อ message → content ให้ตรง backend
   const sendMessage = async () => {
     if (!text.trim() || !target) return;
     try {
       await api.post("/chat", {
         sender_id: user.id,
         receiver_id: target.id,
-        message: text.trim(),
+        content: text.trim(), // <--- สำคัญมาก!
       });
       setText("");
     } catch (e) {
@@ -68,51 +62,42 @@ export default function Chat({ user }) {
     }
   };
 
-  // Enter ส่งข้อความ
   const handleKey = (e) => {
     if (e.key === "Enter") sendMessage();
   };
 
-  // โหลดรายชื่อ users ตอนเข้า page
   useEffect(() => {
     loadUsers();
   }, []);
 
-  // === 🔥 realtime listener ===
   useEffect(() => {
     const s = socketRef.current;
 
     const handleIncoming = (m) => {
-      // เช็คว่า msg นี้เป็นของห้องที่เราเปิดอยู่ไหม
-      const match =
+      const isMatch =
         (m.sender_id === user.id && m.receiver_id === target?.id) ||
         (m.sender_id === target?.id && m.receiver_id === user.id);
 
-      if (match) {
+      if (isMatch) {
         setMessages((prev) => [...prev, m]);
         scrollDown();
       }
     };
 
     s.on("chat:new", handleIncoming);
-
-    return () => {
-      s.off("chat:new", handleIncoming);
-    };
-  }, [user.id, target?.id]);
+    return () => s.off("chat:new", handleIncoming);
+  }, [target?.id, user.id]);
 
   return (
     <div className="chat-container">
       <div className="chat-sidebar">
         <h3 className="chat-title">รายชื่อผู้ติดต่อ</h3>
 
-        {users.length === 0 && <p className="text-sm">ไม่มีผู้ใช้เลย</p>}
-
         {users.map((u) => (
           <button
             key={u.id}
             className={
-              "chat-user-btn" + (target?.id === u.id ? " active" : "")
+              "chat-user-btn " + (target?.id === u.id ? "active" : "")
             }
             onClick={() => selectUser(u)}
           >
@@ -124,7 +109,9 @@ export default function Chat({ user }) {
 
       <div className="chat-main">
         {!target && (
-          <div className="text-sm">เลือกผู้ใช้จากทางซ้ายเพื่อเริ่มคุย</div>
+          <div className="text-sm" style={{ padding: 10 }}>
+            เลือกผู้ใช้จากทางซ้ายเพื่อเริ่มคุย
+          </div>
         )}
 
         {target && (
@@ -134,19 +121,33 @@ export default function Chat({ user }) {
             </div>
 
             <div className="chat-box">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    "chat-msg " +
-                    (m.sender_id === user.id ? "chat-msg-me" : "chat-msg-other")
-                  }
-                >
-                  <div className="chat-msg-text">{m.message}</div>
-                  <div className="chat-msg-time">{m.created_at}</div>
-                </div>
-              ))}
+              {messages.map((m) => {
+                const textValue =
+                  m.content ||
+                  m.message ||
+                  m.message_text ||
+                  m.text ||
+                  m.body ||
+                  "";
 
+                const time =
+                  m.created_at || m.timestamp || m.time || "";
+
+                return (
+                  <div
+                    key={m.id}
+                    className={
+                      "chat-msg " +
+                      (m.sender_id === user.id
+                        ? "chat-msg-me"
+                        : "chat-msg-other")
+                    }
+                  >
+                    <div className="chat-msg-text">{textValue}</div>
+                    {time && <div className="chat-msg-time">{time}</div>}
+                  </div>
+                );
+              })}
               <div ref={msgEndRef}></div>
             </div>
 
