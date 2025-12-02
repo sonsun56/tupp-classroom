@@ -12,10 +12,15 @@ export default function Login({ onSwitchToRegister, onLoggedIn }) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
+      // ยิง API จริง
       const res = await api.post("/login", { email, password });
+
+      // ถ้า login สำเร็จ ส่งข้อมูลให้ parent ใช้งาน
       onLoggedIn(res.data);
     } catch (err) {
+      // ถ้า backend ส่ง error มา → แสดงข้อความนั้น
       setError(err.response?.data?.error || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       setLoading(false);
@@ -30,10 +35,7 @@ export default function Login({ onSwitchToRegister, onLoggedIn }) {
           ระบบส่งงานออนไลน์สำหรับนักเรียนและครู
         </p>
 
-        <form
-          onSubmit={submit}
-          className="auth-form"
-        >
+        <form onSubmit={submit} className="auth-form">
           <div>
             <label className="text-sm">อีเมล</label>
             <input
@@ -44,6 +46,7 @@ export default function Login({ onSwitchToRegister, onLoggedIn }) {
               required
             />
           </div>
+
           <div>
             <label className="text-sm">รหัสผ่าน</label>
             <input
