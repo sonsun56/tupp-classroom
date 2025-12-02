@@ -1,33 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
   <head>
-    <meta charset="utf-8" />
-    <title>TUPP Classroom</title>
-
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
-
+    <meta charset="UTF-8" />
+    <title>School Submit Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   </head>
   <body>
     <div id="root"></div>
-
-    <script>
-      // Register service worker for FCM
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/firebase-messaging-sw.js")
-        .then(() => console.log("Service Worker Registered"))
-        .catch((err) => console.error("SW reg failed", err));
-      }
-    </script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker
-        .register("/firebase-messaging-sw.js")
-        .then(() => console.log("SW Registered"))
-        .catch(console.error);
-      }
-    </script>
-
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

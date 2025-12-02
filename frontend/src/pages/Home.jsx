@@ -1,7 +1,5 @@
 // src/pages/Home.jsx
-import React, { useState, useEffect } from "react";
-import api from "../api.js";
-import socket from "../socket.js";
+import React, { useState } from "react";
 
 import SubjectsNew from "./SubjectsNew.jsx";
 import SubjectPage from "./SubjectPage.jsx";
@@ -13,77 +11,15 @@ import AssignmentsCalendar from "./AssignmentsCalendar.jsx";
 import TeacherDashboard from "./TeacherDashboard.jsx";
 import ChatPage from "./Chat.jsx";
 import Profile from "./Profile.jsx";
-import SubjectAnnouncements from "./SubjectAnnouncements.jsx";
-
-import {
-  requestFCMToken,
-  listenForegroundMessage
-} from "../firebase.js";
 
 export default function Home({ user, setUser, onLogout }) {
-  const [active, setActive] = useState("studentDashboard");
+  const [active, setActive] = useState("studentDashboard"); // เริ่มที่ dashboard นักเรียน
+
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
 
-  const [notif, setNotif] = useState(null);
-  const [unreadAnnouncements, setUnreadAnnouncements] = useState({});
-
   const isTeacher = user.role === "teacher";
 
-  // -------------------------------
-  // FCM token registration
-  // -------------------------------
-  useEffect(() => {
-    async function initFCM() {
-      if (!user?.id) return;
-
-      try {
-        const token = await requestFCMToken();
-        if (token) {
-          await api.post("/save-fcm-token", {
-            user_id: user.id,
-            token
-          });
-        }
-      } catch (err) {
-        console.error("FCM token error:", err);
-      }
-    }
-    initFCM();
-  }, [user]);
-
-  // Foreground push message
-  useEffect(() => {
-    listenForegroundMessage((payload) => {
-      if (!payload?.notification?.body) return;
-      setNotif(payload.notification.body);
-      setTimeout(() => setNotif(null), 3000);
-    });
-  }, []);
-
-  // -------------------------------
-  // Realtime announcement popup (socket.io)
-  // -------------------------------
-  useEffect(() => {
-    const handler = (a) => {
-      if (!a?.subject_id) return;
-
-      setNotif(`📢 ประกาศใหม่: ${a.content}`);
-      setUnreadAnnouncements((prev) => ({
-        ...prev,
-        [a.subject_id]: true
-      }));
-
-      setTimeout(() => setNotif(null), 3000);
-    };
-
-    socket.on("announcement:new", handler);
-    return () => socket.off("announcement:new", handler);
-  }, []);
-
-  // -------------------------------
-  // Navigation handlers
-  // -------------------------------
   const handleSelectSubject = (subject) => {
     setSelectedSubject(subject);
     setActive("subjectDetail");
@@ -98,16 +34,9 @@ export default function Home({ user, setUser, onLogout }) {
     setActive("chat");
   };
 
-  // -------------------------------
-  // MAIN UI
-  // -------------------------------
   return (
     <div className="app-shell">
       <div className="layout-main">
-
-        {/* 🔔 Popup notification */}
-        {notif && <div className="notif-popup">{notif}</div>}
-
         {/* SIDEBAR */}
         <aside className="sidebar">
           <div className="sidebar-header">
@@ -115,14 +44,14 @@ export default function Home({ user, setUser, onLogout }) {
             <div>
               <div className="sidebar-title">TUPP CLASSROOM</div>
               <div className="sidebar-sub">
-                {isTeacher
+                {user.role === "teacher"
                   ? `ครู${user.subject || ""}`
                   : `ม.${user.grade_level} ห้อง ${user.classroom}`}
               </div>
             </div>
           </div>
 
-          {/* Student Dashboard */}
+          {/* Dashboard นักเรียน (เฉพาะ student) */}
           {!isTeacher && (
             <button
               className={
@@ -135,7 +64,7 @@ export default function Home({ user, setUser, onLogout }) {
             </button>
           )}
 
-          {/* Teacher Dashboard */}
+          {/* Dashboard ครู */}
           {isTeacher && (
             <button
               className={
@@ -159,42 +88,21 @@ export default function Home({ user, setUser, onLogout }) {
             🗂 รายวิชา
           </button>
 
-          {/* Subject detail */}
+          {/* รายละเอียดวิชา */}
           <button
             disabled={!selectedSubject}
             className={
               "sidebar-item" +
               (active === "subjectDetail" ? " sidebar-item-active" : "")
             }
-            onClick={() => selectedSubject && setActive("subjectDetail")}
+            onClick={() =>
+              selectedSubject && setActive("subjectDetail")
+            }
           >
             📘 รายละเอียดวิชา
           </button>
 
-          {/* Announcements */}
-          <button
-            disabled={!selectedSubject}
-            className={
-              "sidebar-item" +
-              (active === "announce" ? " sidebar-item-active" : "")
-            }
-            onClick={() => {
-              if (!selectedSubject) return;
-              setActive("announce");
-              setUnreadAnnouncements((prev) => ({
-                ...prev,
-                [selectedSubject.id]: false
-              }));
-            }}
-          >
-            📢 ประกาศวิชา
-            {selectedSubject &&
-              unreadAnnouncements[selectedSubject.id] && (
-                <span className="badge-dot" />
-              )}
-          </button>
-
-          {/* Calendar (student only) */}
+          {/* ปฏิทินงาน */}
           {!isTeacher && (
             <button
               className={
@@ -235,20 +143,27 @@ export default function Home({ user, setUser, onLogout }) {
           </button>
         </aside>
 
-        {/* MAIN PANEL VIEW */}
+        {/* MAIN */}
         <main className="main-panel">
+          {/* STUDENT DASHBOARD */}
           {!isTeacher && active === "studentDashboard" && (
-            <StudentDashboard user={user} onOpenAssignment={handleOpenAssignment} />
+            <StudentDashboard
+              user={user}
+              onOpenAssignment={handleOpenAssignment}
+            />
           )}
 
+          {/* TEACHER DASHBOARD */}
           {isTeacher && active === "teacherDashboard" && (
             <TeacherDashboard user={user} />
           )}
 
+          {/* SUBJECTS LIST */}
           {active === "subjects" && (
             <SubjectsNew user={user} onSelect={handleSelectSubject} />
           )}
 
+          {/* SUBJECT PAGE (detail + assignments + sort) */}
           {active === "subjectDetail" && selectedSubject && (
             <SubjectPage
               subject={selectedSubject}
@@ -259,6 +174,7 @@ export default function Home({ user, setUser, onLogout }) {
             />
           )}
 
+          {/* ASSIGNMENT DETAIL */}
           {active === "assignmentDetail" && selectedAssignment && (
             <AssignmentDetail
               assignment={selectedAssignment}
@@ -267,10 +183,7 @@ export default function Home({ user, setUser, onLogout }) {
             />
           )}
 
-          {active === "announce" && selectedSubject && (
-            <SubjectAnnouncements subject={selectedSubject} user={user} />
-          )}
-
+          {/* CALENDAR VIEW */}
           {!isTeacher && active === "calendar" && (
             <AssignmentsCalendar
               user={user}
@@ -278,8 +191,10 @@ export default function Home({ user, setUser, onLogout }) {
             />
           )}
 
+          {/* CHAT */}
           {active === "chat" && <ChatPage user={user} />}
 
+          {/* PROFILE */}
           {active === "profile" && (
             <Profile
               user={user}
