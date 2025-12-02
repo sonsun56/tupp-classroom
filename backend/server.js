@@ -8,6 +8,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
+import admin from "firebase-admin"; // เพิ่มตรงนี้
 
 // ===== PATHS & FILES =====
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +29,7 @@ const db = new sqlite3.Database(DB_FILE);
 const app = express();
 const httpServer = http.createServer(app);
 const io = new SocketIOServer(httpServer, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
 });
 
 const PORT = process.env.PORT || 4000;
@@ -49,7 +50,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const safe = file.originalname.replace(/\s+/g, "_");
     cb(null, Date.now() + "-" + safe);
-  }
+  },
 });
 const upload = multer({ storage });
 
@@ -132,6 +133,26 @@ db.serialize(() => {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_id INTEGER,
+      teacher_id INTEGER,
+      content TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // token สำหรับ FCM
+  db.run(`
+    CREATE TABLE IF NOT EXISTS fcm_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token TEXT NOT NULL,
+      UNIQUE(user_id, token)
+    )
+  `);
+
   // seed ถ้าไม่มี user เลย
   db.get("SELECT COUNT(*) AS c FROM users", (err, row) => {
     if (err) return;
@@ -146,7 +167,15 @@ db.serialize(() => {
           const teacherId = this.lastID;
           db.run(
             "INSERT INTO users (name,email,password,role,grade_level,classroom,student_id) VALUES (?,?,?,?,?,?,?)",
-            ["นักเรียนตัวอย่าง", "student@test.com", sPass, "student", 5, 1, "12345"],
+            [
+              "นักเรียนตัวอย่าง",
+              "student@test.com",
+              sPass,
+              "student",
+              5,
+              1,
+              "12345",
+            ],
             function (err3) {
               if (err3) return;
               const studentId = this.lastID;
@@ -165,7 +194,7 @@ db.serialize(() => {
                       "2025-12-31",
                       "percent",
                       100,
-                      1
+                      1,
                     ]
                   );
                 }
@@ -196,7 +225,7 @@ function mapUserRow(row, req) {
     classroom: row.classroom,
     student_id: row.student_id,
     subject: row.subject,
-    avatar_url
+    avatar_url,
   };
 }
 
@@ -210,7 +239,7 @@ app.post("/register", (req, res) => {
     grade_level,
     classroom,
     student_id,
-    subject
+    subject,
   } = req.body;
 
   if (!name || !email || !password || !role) {
@@ -252,7 +281,7 @@ app.post("/register", (req, res) => {
                 role === "student" ? grade_level : null,
                 role === "student" ? classroom : null,
                 role === "student" ? student_id : null,
-                role === "teacher" ? subject : null
+                role === "teacher" ? subject : null,
               ],
               function (err3) {
                 if (err3)
@@ -316,6 +345,23 @@ app.post("/login", (req, res) => {
   });
 });
 
+// ===== Save FCM Token =====
+app.post("/save-fcm-token", (req, res) => {
+  const { user_id, token } = req.body;
+  if (!user_id || !token) {
+    return res.status(400).json({ error: "ต้องมี user_id และ token" });
+  }
+
+  db.run(
+    "INSERT OR IGNORE INTO fcm_tokens (user_id, token) VALUES (?, ?)",
+    [user_id, token],
+    (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ ok: true });
+    }
+  );
+});
+
 // ===== Users list (สำหรับแชท) =====
 app.get("/users", (req, res) => {
   const { role } = req.query;
@@ -338,7 +384,7 @@ app.post("/subjects", (req, res) => {
     teacher_id,
     visibility_mode = "all",
     target_grade_level = null,
-    target_classroom = null
+    target_classroom = null,
   } = req.body;
 
   if (!name || !teacher_id) {
@@ -357,7 +403,7 @@ app.post("/subjects", (req, res) => {
       teacher_id,
       visibility_mode,
       visibility_mode === "all" ? null : target_grade_level,
-      visibility_mode === "classroom" ? target_classroom : null
+      visibility_mode === "classroom" ? target_classroom : null,
     ],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
@@ -421,73 +467,67 @@ app.get("/subjects/:subjectId/assignments", (req, res) => {
         ...a,
         worksheet_url: a.worksheet_path
           ? `${baseUrl(req)}/uploads/${path.basename(a.worksheet_path)}`
-          : null
+          : null,
       }));
       res.json(result);
     }
   );
 });
 
-app.post(
-  "/assignments",
-  upload.single("worksheet"),
-  (req, res) => {
-    const {
-      subject_id,
-      title,
-      description,
-      deadline,
-      grading_mode = "check",
-      max_score,
-      require_score
-    } = req.body;
+app.post("/assignments", upload.single("worksheet"), (req, res) => {
+  const {
+    subject_id,
+    title,
+    description,
+    deadline,
+    grading_mode = "check",
+    max_score,
+    require_score,
+  } = req.body;
 
-    if (!subject_id || !title) {
-      return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
-    }
-    if (!["check", "score10", "percent"].includes(grading_mode)) {
-      return res.status(400).json({ error: "grading_mode ไม่ถูกต้อง" });
-    }
+  if (!subject_id || !title) {
+    return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
+  }
+  if (!["check", "score10", "percent"].includes(grading_mode)) {
+    return res.status(400).json({ error: "grading_mode ไม่ถูกต้อง" });
+  }
 
-    const worksheet_path = req.file ? req.file.path : null;
-    const max = grading_mode === "percent" ? (max_score || 100) : null;
-    const reqScore = require_score === "1" ? 1 : 0;
+  const worksheet_path = req.file ? req.file.path : null;
+  const max = grading_mode === "percent" ? max_score || 100 : null;
+  const reqScore = require_score === "1" ? 1 : 0;
 
-    db.run(
-      `INSERT INTO assignments
+  db.run(
+    `INSERT INTO assignments
        (subject_id,title,description,deadline,grading_mode,max_score,require_score,worksheet_path)
        VALUES (?,?,?,?,?,?,?,?)`,
-      [
-        subject_id,
-        title,
-        description || null,
-        deadline || null,
-        grading_mode,
-        max,
-        reqScore,
-        worksheet_path
-      ],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.get(
-          "SELECT * FROM assignments WHERE id = ?",
-          [this.lastID],
-          (err2, row) => {
-            if (err2) return res.status(500).json({ error: err2.message });
-            res.json({
-              ...row,
-              worksheet_url: row.worksheet_path
-                ? `${baseUrl(req)}/uploads/${path.basename(
-                    row.worksheet_path
-                  )}`
-                : null
-            });
-          }
-        );
-      }
-    );
-  }
-);
+    [
+      subject_id,
+      title,
+      description || null,
+      deadline || null,
+      grading_mode,
+      max,
+      reqScore,
+      worksheet_path,
+    ],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      db.get(
+        "SELECT * FROM assignments WHERE id = ?",
+        [this.lastID],
+        (err2, row) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+          res.json({
+            ...row,
+            worksheet_url: row.worksheet_path
+              ? `${baseUrl(req)}/uploads/${path.basename(row.worksheet_path)}`
+              : null,
+          });
+        }
+      );
+    }
+  );
+});
 
 // Export grades CSV
 app.get("/assignments/:id/export-grades", (req, res) => {
@@ -613,7 +653,7 @@ app.get("/submissions/:assignmentId", (req, res) => {
           });
           const result = subs.map((s) => ({
             ...s,
-            files: filesBySub[s.id] || []
+            files: filesBySub[s.id] || [],
           }));
           res.json(result);
         }
@@ -639,33 +679,27 @@ app.post("/submissions/:id/grade", (req, res) => {
 });
 
 // ===== Avatar upload =====
-app.post(
-  "/users/:id/avatar",
-  upload.single("avatar"),
-  (req, res) => {
-    const { id } = req.params;
-    if (!req.file) {
-      return res.status(400).json({ error: "กรุณาอัปโหลดไฟล์รูปภาพ" });
-    }
-    const mime = req.file.mimetype || "";
-    if (!mime.startsWith("image/")) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "ไฟล์ต้องเป็นรูปภาพเท่านั้น" });
-    }
-    const filePath = req.file.path;
-    db.run(
-      "UPDATE users SET avatar_path = ? WHERE id = ?",
-      [filePath, id],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        const avatar_url = `${baseUrl(req)}/uploads/${path.basename(
-          filePath
-        )}`;
-        res.json({ message: "อัปโหลดรูปโปรไฟล์สำเร็จ", avatar_url });
-      }
-    );
+app.post("/users/:id/avatar", upload.single("avatar"), (req, res) => {
+  const { id } = req.params;
+  if (!req.file) {
+    return res.status(400).json({ error: "กรุณาอัปโหลดไฟล์รูปภาพ" });
   }
-);
+  const mime = req.file.mimetype || "";
+  if (!mime.startsWith("image/")) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: "ไฟล์ต้องเป็นรูปภาพเท่านั้น" });
+  }
+  const filePath = req.file.path;
+  db.run(
+    "UPDATE users SET avatar_path = ? WHERE id = ?",
+    [filePath, id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      const avatar_url = `${baseUrl(req)}/uploads/${path.basename(filePath)}`;
+      res.json({ message: "อัปโหลดรูปโปรไฟล์สำเร็จ", avatar_url });
+    }
+  );
+});
 
 // ===== Teacher dashboard =====
 app.get("/dashboard/teacher/:teacherId", (req, res) => {
@@ -730,18 +764,11 @@ app.get("/chat/thread", (req, res) => {
   );
 });
 
-app.get("/dashboard/teacher/:teacherId", (req, res) => {
-  const { teacherId } = req.params;
+// ===== ประกาศรายวิชา =====
+app.get("/subjects/:id/announcements", (req, res) => {
   db.all(
-    `SELECT a.id AS assignment_id, a.title,
-            COUNT(s.id) AS submitted_count
-     FROM assignments a
-     JOIN subjects sub ON a.subject_id = sub.id
-     LEFT JOIN submissions s ON s.assignment_id = a.id
-     WHERE sub.teacher_id = ?
-     GROUP BY a.id
-     ORDER BY a.id DESC`,
-    [teacherId],
+    "SELECT a.*, u.name AS teacher_name FROM announcements a INNER JOIN users u ON u.id = a.teacher_id WHERE subject_id = ? ORDER BY id DESC",
+    [req.params.id],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
       res.json(rows);
@@ -749,15 +776,86 @@ app.get("/dashboard/teacher/:teacherId", (req, res) => {
   );
 });
 
+// ===== Firebase Admin & Push Helper =====
+const serviceAccount = {
+  project_id: "tupp-classroom",
+  client_email: "firebase-adminsdk-fbsvc@tupp-classroom.iam.gserviceaccount.com", // 👉 ใส่ client_email จริงของเพลินในเครื่องตัวเอง
+  private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCOg9zo16O4jpPI\nTk+cgHx3UXVOVGLZaRhlwAp5syupquM75c1s0X96nXktDQs52ppcmVyPmPSaBfQA\ntLOMeqmvAgtnTOGNQ6dvr4qBr1MQ1LxB8NhYT8YxVJIkZ97mMjog9X08DM5VYq9v\ntSXKtUPxxMkrWDdrPl/cKbODa0WIZ16IpMgu7da0j9/x99iWculMA8PJEkc60eqf\nqXfulOvw9yFlqx1Fk+FKmn6dx2FJC6TVw0bp86VEgG0Qwo/jrP/BS4ecVQ7lcwWT\noYOTVUnXHlaBqyx8ATuwbb/YFm6jyjQha6sRtYWpkBG22U9nwqL/dmljTAXUF+cI\nNtWgH4wJAgMBAAECggEAByZ+N3UrouS4bR+MvAKa/BZAsfjm6sHsoPJKiZef6bKI\nFdHDsEwvPrTW8cKKnSZRggg0eNnzmnoQ/NYUKh4KFHH1pi2uerrPFE9KPj57MZ19\ngpDLHLHdSk1UIHJ7tbCwckXkONaVpaVpaEvo76uPk0+hyO8d/LSo9PASBdZ51cxI\nFLjNtbqzNnT+sxyLtOfYBf9BALm8MB15NXUY0DsRprQ5serLsZB+CmxNnvIVLQkJ\nheUiPlNUy8ub+pM6kegez8wbnbzqq/9FwwKDuACczv+g3cJqlb5RSnrxyw18NzQz\nWwsR9QXpqUSSwxG9PxD0f0TxF2EeL+s5JdV5T/J0+QKBgQDC2SX6mlBLrGv7Mf7m\nNtEZDtRzukJKVqNTg1QgMVooUdLMcTh/az7nX7/ynkMLS2l+TU/KPQ/C0Dbe8aYG\nmfZ8ylNCViBncUFyT3TCv41MftoJTLdmiqu1iTQN09PIVZaE4aSXt2/u9slqV+WA\nPaYaJulicuoV2esGjHlQNnmexQKBgQC7PhHWYCXvvOc4KcVrxCONHU69fAzj32Ty\nXK7AQoa/LPbcBaeF/P0lzucn7BOHEbC+aEWX/hzuCCQmhWwyUDzpPx8j0lQ7N14J\nRbyB7qDbNbDuxw0MnA01BKcFduFMDo/fhrI/1ubZzub8uk1UsBjbgqfb5i4lThV9\nQLeAgEHMdQKBgQCP79OzfZ1FWZjnFnbDX8k1ZpQg7X4c5kV+4uwZX/vG/zLmndjr\nn7D3QO9N7gV+6XWDvN7tehATjLaMGRzZkZDZfKjmvzLu12ZOaE3Ls69QzACLkCWH\nVXclArb2Y/315uvrO7jX7sV8VMhTi5zZEDGM7iPH+zXbcIDC9LCFRciwNQKBgBmO\naj7ZVrQ3E1QOF30TA0sycdnZAaVki1GtJsjlC6EyUOtM9kWKdz7e05wWU7/+wSHr\n93u8WlR+1fhQA6mGXBn13Jk2DvsaHoKjeww89sWUuXaNwpEzB3ZyER3k0PFhl2+J\n4fBms5GM9OgPwZhKhMoJNkIEU84Rr0suNx2Z4+E1AoGAaOpQq9oF+aXq1IfCjnbR\nqs2/voLVWerDANk8aL82bw7P4/+cYU6avO0McGlIAEVg+Vi7Lh51d81A0/zShMuq\nvHlyq68KWIsk9S2+1gASxBHS41xJOX+3TP8F0BgSaRy4vjFQqZrEBc4q6nyCn8Tx\nvChXKKHeum94jDowOtp0xps=\n-----END PRIVATE KEY-----\n", // 👉 ใส่ private_key ทั้งก้อน (มี \n อยู่ข้างใน)
+};
 
-// ===== Socket.IO =====
-io.on("connection", (socket) => {
-  // console.log("Client connected", socket.id);
-  socket.on("disconnect", () => {
-    // console.log("Client disconnected", socket.id);
+let adminApp = null;
+if (serviceAccount.client_email && serviceAccount.private_key) {
+  adminApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
   });
+} else {
+  console.warn(
+    "⚠ Firebase Admin ยังไม่ได้ตั้งค่า (ไม่มี client_email/private_key) – ระบบ Push จะไม่ทำงาน แต่ backend ทำงานปกติ"
+  );
+}
+
+async function sendPushNotification(tokens, title, body) {
+  if (!adminApp) return; // ยังไม่ได้ config ก็ข้ามไปเฉย ๆ
+  if (!tokens.length) return;
+
+  const message = {
+    notification: { title, body },
+    tokens,
+    webpush: {
+      fcmOptions: {
+        link: "/?open=announcement",
+      },
+    },
+  };
+
+  try {
+    await admin.messaging().sendEachForMulticast(message);
+  } catch (err) {
+    console.error("sendPushNotification error:", err);
+  }
+}
+
+app.post("/subjects/:id/announcements", (req, res) => {
+  const { teacher_id, content } = req.body;
+  if (!teacher_id || !content.trim()) {
+    return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
+  }
+
+  const subjectId = req.params.id;
+
+  db.run(
+    `INSERT INTO announcements (subject_id, teacher_id, content) VALUES (?, ?, ?)`,
+    [subjectId, teacher_id, content],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+
+      const announcement = {
+        id: this.lastID,
+        subject_id: subjectId,
+        teacher_id,
+        content,
+        created_at: new Date().toISOString(),
+      };
+
+      // realtime ไปทุก client
+      io.emit("announcement:new", announcement);
+
+      // push ไปยังทุก token ที่มี (เพลินจะมา filter ทีหลังตามห้องก็ได้)
+      db.all("SELECT token FROM fcm_tokens", [], async (e2, rows) => {
+        if (e2) {
+          console.error(e2);
+          return;
+        }
+        const tokens = rows.map((r) => r.token);
+        await sendPushNotification(tokens, "📢 ประกาศใหม่!", content);
+      });
+
+      res.json(announcement);
+    }
+  );
 });
 
+// ===== Socket.IO =====
 io.on("connection", (socket) => {
   console.log("user connected:", socket.id);
 
@@ -783,8 +881,7 @@ io.on("connection", (socket) => {
   });
 });
 
-
-// ===== START SERVER (ใช้ httpServer อย่างเดียว) =====
+// ===== START SERVER =====
 httpServer.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);
   console.log(`📦 DB: ${DB_FILE}`);
