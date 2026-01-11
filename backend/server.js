@@ -11,6 +11,9 @@ import { Server as SocketIOServer } from "socket.io";
 import "dotenv/config";
 import dotenv from "dotenv";
 dotenv.config();
+import cloudinary from "./cloudinary.js";
+import upload from "./upload.js";
+import streamifier from "streamifier";
 
 
 
@@ -640,6 +643,36 @@ if (fs.existsSync(frontendPath)) {
     res.sendFile(path.join(frontendPath, "index.html"));
   });
 }
+
+app.post(
+  "/submissions/:assignmentId",
+  upload.array("files", 5),
+  async (req, res) => {
+    try {
+      const uploadOne = (file) =>
+        new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: "tupp-classroom/submissions" },
+            (err, result) => {
+              if (err) reject(err);
+              else resolve(result.secure_url);
+            }
+          );
+          streamifier.createReadStream(file.buffer).pipe(stream);
+        });
+
+      const urls = [];
+      for (const file of req.files) {
+        urls.push(await uploadOne(file));
+      }
+
+      res.json({ files: urls });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "upload failed" });
+    }
+  }
+);
 
 // ===== START SERVER =====
 httpServer.listen(PORT, () => {
