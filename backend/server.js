@@ -8,6 +8,11 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
+import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config();
+
+
 
 // ===== PATHS & FILES =====
 const __filename = fileURLToPath(import.meta.url);
