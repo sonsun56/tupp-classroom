@@ -8,7 +8,9 @@ export default function AssignmentsNew({ subject, user, onOpenAssignment }) {
 
   const loadAssignments = async () => {
     try {
-      const res = await api.get(`/subjects/${subject.id}/assignments`);
+      const res = await api.get(`/subjects/${subject.id}/assignments`, {
+        params: user.role === "student" ? { student_id: user.id } : {},
+      });
       setAssignments(res.data || []);
     } catch (e) {
       console.error(e);

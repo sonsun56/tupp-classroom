@@ -1,9 +1,10 @@
-// frontend/src/pages/Register.jsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import api from "../api.js";
 
 const GRADES = [1, 2, 3, 4, 5, 6];
-const ROOMS = [1, 2, 3, 4, 5, 6];
+
+// ✅ ห้อง 1–13
+const ROOMS = Array.from({ length: 13 }, (_, i) => i + 1);
 
 export default function Register({ onSwitchToLogin, onRegistered }) {
   const [name, setName] = useState("");
@@ -16,6 +17,16 @@ export default function Register({ onSwitchToLogin, onRegistered }) {
   const [subject, setSubject] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ✅ ทำให้ dropdown มี "แถบเลื่อน" (มือถือเห็นชัด)
+  // - desktop: เป็น select ปกติ (size=1)
+  // - mobile: เป็น list เลื่อน (size=6)
+  const roomSelectSize = useMemo(() => {
+    if (typeof window === "undefined") return 1;
+    return window.matchMedia && window.matchMedia("(max-width: 520px)").matches
+      ? 6
+      : 1;
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -87,18 +98,14 @@ export default function Register({ onSwitchToLogin, onRegistered }) {
             <div className="pill-row">
               <button
                 type="button"
-                className={
-                  "pill" + (role === "student" ? " pill-active" : "")
-                }
+                className={"pill" + (role === "student" ? " pill-active" : "")}
                 onClick={() => setRole("student")}
               >
                 👩‍🎓 นักเรียน
               </button>
               <button
                 type="button"
-                className={
-                  "pill" + (role === "teacher" ? " pill-active" : "")
-                }
+                className={"pill" + (role === "teacher" ? " pill-active" : "")}
                 onClick={() => setRole("teacher")}
               >
                 👨‍🏫 ครู
@@ -123,12 +130,16 @@ export default function Register({ onSwitchToLogin, onRegistered }) {
                     ))}
                   </select>
                 </div>
+
                 <div>
                   <label className="text-sm">ห้อง</label>
+
+                  {/* ✅ dropdown ห้อง 1–13 + เลื่อนในมือถือ */}
                   <select
-                    className="input"
+                    className="input classroom-select"
                     value={classroom}
                     onChange={(e) => setClassroom(Number(e.target.value))}
+                    size={roomSelectSize}
                   >
                     {ROOMS.map((r) => (
                       <option key={r} value={r}>
@@ -136,6 +147,13 @@ export default function Register({ onSwitchToLogin, onRegistered }) {
                       </option>
                     ))}
                   </select>
+
+                  {/* ✅ hint เล็ก ๆ บนมือถือ */}
+                  {roomSelectSize > 1 && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                      เลื่อนเพื่อเลือกห้อง (1–13)
+                    </div>
+                  )}
                 </div>
               </div>
 

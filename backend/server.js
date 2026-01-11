@@ -26,6 +26,8 @@ const db = new sqlite3.Database(DB_FILE);
 
 // ===== SERVER & SOCKET.IO =====
 const app = express();
+app.set("trust proxy", 1); // สำคัญเวลารันหลัง proxy เช่น Render/Cloud Run
+
 const httpServer = http.createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" }
@@ -35,7 +37,7 @@ const PORT = process.env.PORT || 4000;
 
 // ===== MIDDLEWARE =====
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use("/uploads", express.static(UPLOAD_DIR));
 
 // ===== ROOT HEALTH CHECK (สำคัญสำหรับ Render / UptimeRobot) =====
@@ -47,8 +49,8 @@ app.get("/", (req, res) => {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const safe = file.originalname.replace(/\s+/g, "_");
-    cb(null, Date.now() + "-" + safe);
+    const safeName = path.basename(file.originalname).replace(/\s+/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
   }
 });
 const upload = multer({ storage });
@@ -138,35 +140,29 @@ db.serialize(() => {
     if (row.c === 0) {
       const tPass = bcrypt.hashSync("1234", 10);
       const sPass = bcrypt.hashSync("1234", 10);
+
       db.run(
         "INSERT INTO users (name,email,password,role,subject) VALUES (?,?,?,?,?)",
         ["ครูตัวอย่าง", "teacher@test.com", tPass, "teacher", "คณิตศาสตร์"],
         function (err2) {
           if (err2) return;
           const teacherId = this.lastID;
+
           db.run(
             "INSERT INTO users (name,email,password,role,grade_level,classroom,student_id) VALUES (?,?,?,?,?,?,?)",
             ["นักเรียนตัวอย่าง", "student@test.com", sPass, "student", 5, 1, "12345"],
             function (err3) {
               if (err3) return;
-              const studentId = this.lastID;
               db.run(
                 "INSERT INTO subjects (name,teacher_id,visibility_mode) VALUES (?,?,?)",
                 ["คณิตเพิ่มเติม", teacherId, "all"],
                 function (err4) {
                   if (err4) return;
                   const subjectId = this.lastID;
+
                   db.run(
                     "INSERT INTO assignments (subject_id,title,description,deadline,grading_mode,max_score,require_score) VALUES (?,?,?,?,?,?,?)",
-                    [
-                      subjectId,
-                      "ใบงานตัวอย่าง",
-                      "ทดลองใช้งานระบบส่งงาน",
-                      "2025-12-31",
-                      "percent",
-                      100,
-                      1
-                    ]
+                    [subjectId, "ใบงานตัวอย่าง", "ทดลองใช้งานระบบส่งงาน", "2025-12-31", "percent", 100, 1]
                   );
                 }
               );
@@ -187,6 +183,7 @@ function mapUserRow(row, req) {
   const avatar_url = row.avatar_path
     ? `${baseUrl(req)}/uploads/${path.basename(row.avatar_path)}`
     : null;
+
   return {
     id: row.id,
     name: row.name,
@@ -202,16 +199,7 @@ function mapUserRow(row, req) {
 
 // ===== Auth: REGISTER =====
 app.post("/register", (req, res) => {
-  const {
-    name,
-    email,
-    password,
-    role,
-    grade_level,
-    classroom,
-    student_id,
-    subject
-  } = req.body;
+  const { name, email, password, role, grade_level, classroom, student_id, subject } = req.body;
 
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: "กรุณากรอกข้อมูลให้ครบ" });
@@ -222,9 +210,7 @@ app.post("/register", (req, res) => {
 
   if (role === "student") {
     if (!/^[0-9]{5}$/.test(student_id || "")) {
-      return res
-        .status(400)
-        .json({ error: "รหัสนักเรียนต้องเป็นตัวเลข 5 หลัก" });
+      return res.status(400).json({ error: "รหัสนักเรียนต้องเป็นตัวเลข 5 หลัก" });
     }
   }
 
@@ -255,41 +241,25 @@ app.post("/register", (req, res) => {
                 role === "teacher" ? subject : null
               ],
               function (err3) {
-                if (err3)
-                  return res.status(500).json({ error: err3.message });
-                db.get(
-                  "SELECT * FROM users WHERE id = ?",
-                  [this.lastID],
-                  (err4, row) => {
-                    if (err4)
-                      return res.status(500).json({ error: err4.message });
-                    res.json(mapUserRow(row, req));
-                  }
-                );
+                if (err3) return res.status(500).json({ error: err3.message });
+                db.get("SELECT * FROM users WHERE id = ?", [this.lastID], (err4, row) => {
+                  if (err4) return res.status(500).json({ error: err4.message });
+                  res.json(mapUserRow(row, req));
+                });
               }
             );
           })
           .catch(() =>
-            res
-              .status(500)
-              .json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสรหัสผ่าน" })
+            res.status(500).json({ error: "เกิดข้อผิดพลาดในการเข้ารหัสรหัสผ่าน" })
           );
       };
 
       if (role === "student") {
-        db.get(
-          "SELECT id FROM users WHERE student_id = ?",
-          [student_id],
-          (err3, rowStu) => {
-            if (err3) return res.status(500).json({ error: err3.message });
-            if (rowStu) {
-              return res
-                .status(400)
-                .json({ error: "รหัสนักเรียนนี้ถูกใช้แล้ว" });
-            }
-            afterStudentCheck();
-          }
-        );
+        db.get("SELECT id FROM users WHERE student_id = ?", [student_id], (err3, rowStu) => {
+          if (err3) return res.status(500).json({ error: err3.message });
+          if (rowStu) return res.status(400).json({ error: "รหัสนักเรียนนี้ถูกใช้แล้ว" });
+          afterStudentCheck();
+        });
       } else {
         afterStudentCheck();
       }
@@ -300,10 +270,9 @@ app.post("/register", (req, res) => {
 // ===== Auth: LOGIN =====
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res
-      .status(400)
-      .json({ error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน" });
+  if (!email || !password) {
+    return res.status(400).json({ error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน" });
+  }
 
   db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -333,17 +302,9 @@ app.get("/users", (req, res) => {
 
 // ===== Subjects =====
 app.post("/subjects", (req, res) => {
-  const {
-    name,
-    teacher_id,
-    visibility_mode = "all",
-    target_grade_level = null,
-    target_classroom = null
-  } = req.body;
+  const { name, teacher_id, visibility_mode = "all", target_grade_level = null, target_classroom = null } = req.body;
 
-  if (!name || !teacher_id) {
-    return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
-  }
+  if (!name || !teacher_id) return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
   if (!["all", "grade", "classroom"].includes(visibility_mode)) {
     return res.status(400).json({ error: "visibility_mode ไม่ถูกต้อง" });
   }
@@ -361,33 +322,23 @@ app.post("/subjects", (req, res) => {
     ],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
-      db.get(
-        "SELECT * FROM subjects WHERE id = ?",
-        [this.lastID],
-        (err2, row) => {
-          if (err2) return res.status(500).json({ error: err2.message });
-          res.json(row);
-        }
-      );
+      db.get("SELECT * FROM subjects WHERE id = ?", [this.lastID], (err2, row) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json(row);
+      });
     }
   );
 });
 
 app.get("/subjects", (req, res) => {
   const { role, userId, grade_level, classroom } = req.query;
-  if (!role || !userId) {
-    return res.status(400).json({ error: "ต้องมี role และ userId" });
-  }
+  if (!role || !userId) return res.status(400).json({ error: "ต้องมี role และ userId" });
 
   if (role === "teacher") {
-    db.all(
-      "SELECT * FROM subjects WHERE teacher_id = ? ORDER BY id DESC",
-      [userId],
-      (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-      }
-    );
+    db.all("SELECT * FROM subjects WHERE teacher_id = ? ORDER BY id DESC", [userId], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    });
   } else {
     const g = parseInt(grade_level);
     const c = parseInt(classroom);
@@ -412,82 +363,49 @@ app.get("/subjects", (req, res) => {
 // ===== Assignments =====
 app.get("/subjects/:subjectId/assignments", (req, res) => {
   const { subjectId } = req.params;
-  db.all(
-    "SELECT * FROM assignments WHERE subject_id = ? ORDER BY id DESC",
-    [subjectId],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      const result = rows.map((a) => ({
+  db.all("SELECT * FROM assignments WHERE subject_id = ? ORDER BY id DESC", [subjectId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(
+      rows.map((a) => ({
         ...a,
-        worksheet_url: a.worksheet_path
-          ? `${baseUrl(req)}/uploads/${path.basename(a.worksheet_path)}`
-          : null
-      }));
-      res.json(result);
+        worksheet_url: a.worksheet_path ? `${baseUrl(req)}/uploads/${path.basename(a.worksheet_path)}` : null
+      }))
+    );
+  });
+});
+
+app.post("/assignments", upload.single("worksheet"), (req, res) => {
+  const { subject_id, title, description, deadline, grading_mode = "check", max_score, require_score } = req.body;
+
+  if (!subject_id || !title) return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
+  if (!["check", "score10", "percent"].includes(grading_mode)) {
+    return res.status(400).json({ error: "grading_mode ไม่ถูกต้อง" });
+  }
+
+  const worksheet_path = req.file ? req.file.path : null;
+  const max = grading_mode === "percent" ? (max_score || 100) : null;
+  const reqScore = require_score === "1" ? 1 : 0;
+
+  db.run(
+    `INSERT INTO assignments
+     (subject_id,title,description,deadline,grading_mode,max_score,require_score,worksheet_path)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [subject_id, title, description || null, deadline || null, grading_mode, max, reqScore, worksheet_path],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+
+      io.emit("assignments:updated", { subject_id });
+
+      db.get("SELECT * FROM assignments WHERE id = ?", [this.lastID], (err2, row) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({
+          ...row,
+          worksheet_url: row.worksheet_path ? `${baseUrl(req)}/uploads/${path.basename(row.worksheet_path)}` : null
+        });
+      });
     }
   );
 });
-
-app.post(
-  "/assignments",
-  upload.single("worksheet"),
-  (req, res) => {
-    const {
-      subject_id,
-      title,
-      description,
-      deadline,
-      grading_mode = "check",
-      max_score,
-      require_score
-    } = req.body;
-
-    if (!subject_id || !title) {
-      return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
-    }
-    if (!["check", "score10", "percent"].includes(grading_mode)) {
-      return res.status(400).json({ error: "grading_mode ไม่ถูกต้อง" });
-    }
-
-    const worksheet_path = req.file ? req.file.path : null;
-    const max = grading_mode === "percent" ? (max_score || 100) : null;
-    const reqScore = require_score === "1" ? 1 : 0;
-
-    db.run(
-      `INSERT INTO assignments
-       (subject_id,title,description,deadline,grading_mode,max_score,require_score,worksheet_path)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [
-        subject_id,
-        title,
-        description || null,
-        deadline || null,
-        grading_mode,
-        max,
-        reqScore,
-        worksheet_path
-      ],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        db.get(
-          "SELECT * FROM assignments WHERE id = ?",
-          [this.lastID],
-          (err2, row) => {
-            if (err2) return res.status(500).json({ error: err2.message });
-            res.json({
-              ...row,
-              worksheet_url: row.worksheet_path
-                ? `${baseUrl(req)}/uploads/${path.basename(
-                    row.worksheet_path
-                  )}`
-                : null
-            });
-          }
-        );
-      }
-    );
-  }
-);
 
 // Export grades CSV
 app.get("/assignments/:id/export-grades", (req, res) => {
@@ -503,88 +421,74 @@ app.get("/assignments/:id/export-grades", (req, res) => {
       let csv = "ชื่อ,รหัสนักเรียน,ระดับชั้น,ห้อง,คะแนน,ความคิดเห็น\n";
       rows.forEach((r) => {
         const fb = (r.feedback || "").replace(/,/g, " ");
-        csv += `${r.name || ""},${r.student_id || ""},${r.grade_level ||
-          ""},${r.classroom || ""},${r.grade || ""},${fb}\n`;
+        csv += `${r.name || ""},${r.student_id || ""},${r.grade_level || ""},${r.classroom || ""},${r.grade || ""},${fb}\n`;
       });
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="assignment-${id}-grades.csv"`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename="assignment-${id}-grades.csv"`);
       res.send(csv);
     }
   );
 });
 
 // ===== Submissions =====
-app.post(
-  "/submissions/:assignmentId",
-  upload.array("files", 5),
-  (req, res) => {
-    const { assignmentId } = req.params;
-    const { student_id } = req.body;
-    const files = req.files || [];
+app.post("/submissions/:assignmentId", upload.array("files", 5), (req, res) => {
+  const { assignmentId } = req.params;
+  const { student_id } = req.body;
+  const files = req.files || [];
 
-    if (!student_id) {
-      return res.status(400).json({ error: "ต้องมี student_id" });
-    }
-    if (!files.length) {
-      return res
-        .status(400)
-        .json({ error: "กรุณาอัปโหลดไฟล์อย่างน้อย 1 ไฟล์" });
-    }
+  if (!student_id) return res.status(400).json({ error: "ต้องมี student_id" });
+  if (!files.length) return res.status(400).json({ error: "กรุณาอัปโหลดไฟล์อย่างน้อย 1 ไฟล์" });
 
-    db.get(
-      "SELECT id FROM submissions WHERE assignment_id = ? AND student_id = ?",
-      [assignmentId, student_id],
-      (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
+  db.get(
+    "SELECT id FROM submissions WHERE assignment_id = ? AND student_id = ?",
+    [assignmentId, student_id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
 
-        const handleFiles = (submissionId) => {
-          db.run(
-            "DELETE FROM submission_files WHERE submission_id = ?",
-            [submissionId],
-            (err2) => {
-              if (err2) console.error(err2);
-              const stmt = db.prepare(
-                "INSERT INTO submission_files (submission_id,file_path) VALUES (?,?)"
-              );
-              files.forEach((f) => {
-                stmt.run(submissionId, f.path);
-              });
-              stmt.finalize();
-              res.json({ message: "ส่งงานสำเร็จ", id: submissionId });
-            }
-          );
-        };
+      const handleFiles = (submissionId) => {
+        db.run("DELETE FROM submission_files WHERE submission_id = ?", [submissionId], (err2) => {
+          if (err2) console.error(err2);
 
-        if (row) {
-          db.run(
-            "UPDATE submissions SET grade=NULL, feedback=NULL, created_at=CURRENT_TIMESTAMP WHERE id = ?",
-            [row.id],
-            (err2) => {
-              if (err2) return res.status(500).json({ error: err2.message });
-              handleFiles(row.id);
-            }
-          );
-        } else {
-          db.run(
-            "INSERT INTO submissions (assignment_id,student_id) VALUES (?,?)",
-            [assignmentId, student_id],
-            function (err2) {
-              if (err2) return res.status(500).json({ error: err2.message });
-              handleFiles(this.lastID);
-            }
-          );
-        }
+          const stmt = db.prepare("INSERT INTO submission_files (submission_id,file_path) VALUES (?,?)");
+          files.forEach((f) => stmt.run(submissionId, f.path));
+          stmt.finalize();
+
+          io.emit("submissions:updated", {
+            assignment_id: Number(assignmentId),
+            student_id: Number(student_id)
+          });
+
+          res.json({ message: "ส่งงานสำเร็จ", id: submissionId });
+        });
+      };
+
+      if (row) {
+        db.run(
+          "UPDATE submissions SET grade=NULL, feedback=NULL, created_at=CURRENT_TIMESTAMP WHERE id = ?",
+          [row.id],
+          (err2) => {
+            if (err2) return res.status(500).json({ error: err2.message });
+            handleFiles(row.id);
+          }
+        );
+      } else {
+        db.run(
+          "INSERT INTO submissions (assignment_id,student_id) VALUES (?,?)",
+          [assignmentId, student_id],
+          function (err2) {
+            if (err2) return res.status(500).json({ error: err2.message });
+            handleFiles(this.lastID);
+          }
+        );
       }
-    );
-  }
-);
+    }
+  );
+});
 
 app.get("/submissions/:assignmentId", (req, res) => {
   const { assignmentId } = req.params;
   const b = baseUrl(req);
+
   db.all(
     `SELECT s.*, u.name AS student_name, u.grade_level, u.classroom
      FROM submissions s
@@ -597,25 +501,17 @@ app.get("/submissions/:assignmentId", (req, res) => {
 
       const ids = subs.map((s) => s.id);
       db.all(
-        `SELECT * FROM submission_files WHERE submission_id IN (${ids
-          .map(() => "?")
-          .join(",")})`,
+        `SELECT * FROM submission_files WHERE submission_id IN (${ids.map(() => "?").join(",")})`,
         ids,
         (err2, files) => {
           if (err2) return res.status(500).json({ error: err2.message });
+
           const filesBySub = {};
           files.forEach((f) => {
-            if (!filesBySub[f.submission_id])
-              filesBySub[f.submission_id] = [];
-            filesBySub[f.submission_id].push(
-              `${b}/uploads/${path.basename(f.file_path)}`
-            );
+            (filesBySub[f.submission_id] ||= []).push(`${b}/uploads/${path.basename(f.file_path)}`);
           });
-          const result = subs.map((s) => ({
-            ...s,
-            files: filesBySub[s.id] || []
-          }));
-          res.json(result);
+
+          res.json(subs.map((s) => ({ ...s, files: filesBySub[s.id] || [] })));
         }
       );
     }
@@ -625,47 +521,40 @@ app.get("/submissions/:assignmentId", (req, res) => {
 app.post("/submissions/:id/grade", (req, res) => {
   const { id } = req.params;
   const { grade, feedback } = req.body;
-  db.run(
-    "UPDATE submissions SET grade = ?, feedback = ? WHERE id = ?",
-    [grade, feedback, id],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0) {
-        return res.status(404).json({ error: "ไม่พบงานนี้" });
+
+  db.run("UPDATE submissions SET grade = ?, feedback = ? WHERE id = ?", [grade, feedback, id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: "ไม่พบงานนี้" });
+
+    db.get("SELECT assignment_id FROM submissions WHERE id = ?", [id], (e2, row2) => {
+      if (!e2 && row2?.assignment_id != null) {
+        io.emit("submissions:updated", { assignment_id: row2.assignment_id, graded: true });
       }
-      res.json({ message: "บันทึกคะแนนแล้ว" });
-    }
-  );
+    });
+
+    res.json({ message: "บันทึกคะแนนแล้ว" });
+  });
 });
 
 // ===== Avatar upload =====
-app.post(
-  "/users/:id/avatar",
-  upload.single("avatar"),
-  (req, res) => {
-    const { id } = req.params;
-    if (!req.file) {
-      return res.status(400).json({ error: "กรุณาอัปโหลดไฟล์รูปภาพ" });
-    }
-    const mime = req.file.mimetype || "";
-    if (!mime.startsWith("image/")) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "ไฟล์ต้องเป็นรูปภาพเท่านั้น" });
-    }
-    const filePath = req.file.path;
-    db.run(
-      "UPDATE users SET avatar_path = ? WHERE id = ?",
-      [filePath, id],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        const avatar_url = `${baseUrl(req)}/uploads/${path.basename(
-          filePath
-        )}`;
-        res.json({ message: "อัปโหลดรูปโปรไฟล์สำเร็จ", avatar_url });
-      }
-    );
+app.post("/users/:id/avatar", upload.single("avatar"), (req, res) => {
+  const { id } = req.params;
+
+  if (!req.file) return res.status(400).json({ error: "กรุณาอัปโหลดไฟล์รูปภาพ" });
+
+  const mime = req.file.mimetype || "";
+  if (!mime.startsWith("image/")) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: "ไฟล์ต้องเป็นรูปภาพเท่านั้น" });
   }
-);
+
+  const filePath = req.file.path;
+  db.run("UPDATE users SET avatar_path = ? WHERE id = ?", [filePath, id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    const avatar_url = `${baseUrl(req)}/uploads/${path.basename(filePath)}`;
+    res.json({ message: "อัปโหลดรูปโปรไฟล์สำเร็จ", avatar_url });
+  });
+});
 
 // ===== Teacher dashboard =====
 app.get("/dashboard/teacher/:teacherId", (req, res) => {
@@ -690,33 +579,23 @@ app.get("/dashboard/teacher/:teacherId", (req, res) => {
 // ===== Chat =====
 app.post("/chat", (req, res) => {
   const { sender_id, receiver_id, content } = req.body;
-  if (!sender_id || !receiver_id || !content) {
-    return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
-  }
-  db.run(
-    "INSERT INTO messages (sender_id,receiver_id,content) VALUES (?,?,?)",
-    [sender_id, receiver_id, content],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      db.get(
-        "SELECT * FROM messages WHERE id = ?",
-        [this.lastID],
-        (err2, row) => {
-          if (!err2 && row) {
-            io.emit("chat:new", row);
-          }
-        }
-      );
-      res.json({ id: this.lastID });
-    }
-  );
+  if (!sender_id || !receiver_id || !content) return res.status(400).json({ error: "ข้อมูลไม่ครบ" });
+
+  db.run("INSERT INTO messages (sender_id,receiver_id,content) VALUES (?,?,?)", [sender_id, receiver_id, content], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+
+    db.get("SELECT * FROM messages WHERE id = ?", [this.lastID], (err2, row) => {
+      if (!err2 && row) io.emit("chat:new", row);
+    });
+
+    res.json({ id: this.lastID });
+  });
 });
 
 app.get("/chat/thread", (req, res) => {
   const { user1, user2 } = req.query;
-  if (!user1 || !user2) {
-    return res.status(400).json({ error: "ต้องมี user1 และ user2" });
-  }
+  if (!user1 || !user2) return res.status(400).json({ error: "ต้องมี user1 และ user2" });
+
   db.all(
     `SELECT * FROM messages
      WHERE (sender_id = ? AND receiver_id = ?)
@@ -730,61 +609,34 @@ app.get("/chat/thread", (req, res) => {
   );
 });
 
-app.get("/dashboard/teacher/:teacherId", (req, res) => {
-  const { teacherId } = req.params;
-  db.all(
-    `SELECT a.id AS assignment_id, a.title,
-            COUNT(s.id) AS submitted_count
-     FROM assignments a
-     JOIN subjects sub ON a.subject_id = sub.id
-     LEFT JOIN submissions s ON s.assignment_id = a.id
-     WHERE sub.teacher_id = ?
-     GROUP BY a.id
-     ORDER BY a.id DESC`,
-    [teacherId],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-
 // ===== Socket.IO =====
-io.on("connection", (socket) => {
-  // console.log("Client connected", socket.id);
-  socket.on("disconnect", () => {
-    // console.log("Client disconnected", socket.id);
-  });
-});
-
 io.on("connection", (socket) => {
   console.log("user connected:", socket.id);
 
-  // ระบุ user_id
   socket.on("user:online", (userId) => {
     socket.userId = userId;
     io.emit("user:online", userId);
   });
 
   socket.on("disconnect", () => {
-    if (socket.userId) {
-      io.emit("user:offline", socket.userId);
-    }
+    if (socket.userId) io.emit("user:offline", socket.userId);
   });
 
-  // Typing indicator
-  socket.on("chat:typing:start", ({ from, to }) => {
-    io.emit("chat:typing:start", { from, to });
-  });
-
-  socket.on("chat:typing:stop", ({ from, to }) => {
-    io.emit("chat:typing:stop", { from, to });
-  });
+  socket.on("chat:typing:start", ({ from, to }) => io.emit("chat:typing:start", { from, to }));
+  socket.on("chat:typing:stop", ({ from, to }) => io.emit("chat:typing:stop", { from, to }));
 });
 
+// ===== Serve Frontend (ถ้ามีจริง) =====
+const frontendPath = path.join(__dirname, "frontend", "dist");
+if (fs.existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
 
-// ===== START SERVER (ใช้ httpServer อย่างเดียว) =====
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(frontendPath, "index.html"));
+  });
+}
+
+// ===== START SERVER =====
 httpServer.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);
   console.log(`📦 DB: ${DB_FILE}`);

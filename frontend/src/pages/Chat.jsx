@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from "react";
+// src/pages/Chat.jsx
+import React, { useEffect, useRef, useState } from "react";
 import api from "../api";
 import socket from "../socket";
 
@@ -13,6 +14,7 @@ export default function Chat({ user }) {
 
   const msgEndRef = useRef(null);
   const socketRef = useRef(socket);
+  const typingTimeout = useRef(null);
 
   const scrollDown = () => {
     setTimeout(() => {
@@ -29,13 +31,10 @@ export default function Chat({ user }) {
     }
   };
 
-  const loadThread = async (targetUser) => {
+  const loadThread = async (u) => {
     try {
       const res = await api.get("/chat/thread", {
-        params: {
-          user1: user.id,
-          user2: targetUser.id,
-        },
+        params: { user1: user.id, user2: u.id },
       });
       setMessages(res.data || []);
       scrollDown();
@@ -58,41 +57,44 @@ export default function Chat({ user }) {
         content: text.trim(),
       });
       setText("");
-      socketRef.current.emit("chat:typing:stop", { from: user.id, to: target.id });
+      socketRef.current.emit("chat:typing:stop", {
+        from: user.id,
+        to: target.id,
+      });
     } catch (e) {
       console.error(e);
     }
   };
 
   const handleKey = (e) => {
-    if (e.key === "Enter") sendMessage();
-    else {
-      socketRef.current.emit("chat:typing:start", {
+    if (e.key === "Enter") {
+      sendMessage();
+      return;
+    }
+
+    socketRef.current.emit("chat:typing:start", {
+      from: user.id,
+      to: target?.id,
+    });
+
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => {
+      socketRef.current.emit("chat:typing:stop", {
         from: user.id,
         to: target?.id,
       });
-      clearTimeout(window.typingTimeout);
-      window.typingTimeout = setTimeout(() => {
-        socketRef.current.emit("chat:typing:stop", {
-          from: user.id,
-          to: target?.id,
-        });
-      }, 1000);
-    }
+    }, 1000);
   };
 
   useEffect(() => {
     loadUsers();
-
-    // ส่ง event ว่า user นี้ออนไลน์
     socketRef.current.emit("user:online", user.id);
   }, []);
 
-  // Handle realtime messages + typing + online
   useEffect(() => {
     const s = socketRef.current;
 
-    const handleIncoming = (m) => {
+    const onMessage = (m) => {
       const match =
         (m.sender_id === user.id && m.receiver_id === target?.id) ||
         (m.sender_id === target?.id && m.receiver_id === user.id);
@@ -103,47 +105,34 @@ export default function Chat({ user }) {
       }
     };
 
-    const handleTypingStart = ({ from, to }) => {
-      if (to === user.id && from === target?.id) {
-        setTypingUser(from);
-      }
-    };
-
-    const handleTypingStop = ({ from, to }) => {
-      if (to === user.id && from === target?.id) {
-        setTypingUser(null);
-      }
-    };
-
-    const handleOnline = (userId) => {
-      setOnlineUsers((prev) => [...new Set([...prev, userId])]);
-    };
-
-    const handleOffline = (userId) => {
-      setOnlineUsers((prev) => prev.filter((u) => u !== userId));
-    };
-
-    s.on("chat:new", handleIncoming);
-    s.on("chat:typing:start", handleTypingStart);
-    s.on("chat:typing:stop", handleTypingStop);
-    s.on("user:online", handleOnline);
-    s.on("user:offline", handleOffline);
+    s.on("chat:new", onMessage);
+    s.on("chat:typing:start", ({ from, to }) => {
+      if (to === user.id && from === target?.id) setTypingUser(from);
+    });
+    s.on("chat:typing:stop", ({ from, to }) => {
+      if (to === user.id && from === target?.id) setTypingUser(null);
+    });
+    s.on("user:online", (id) =>
+      setOnlineUsers((p) => [...new Set([...p, id])])
+    );
+    s.on("user:offline", (id) =>
+      setOnlineUsers((p) => p.filter((x) => x !== id))
+    );
 
     return () => {
-      s.off("chat:new", handleIncoming);
-      s.off("chat:typing:start", handleTypingStart);
-      s.off("chat:typing:stop", handleTypingStop);
-      s.off("user:online", handleOnline);
-      s.off("user:offline", handleOffline);
+      s.off("chat:new", onMessage);
+      s.off("chat:typing:start");
+      s.off("chat:typing:stop");
+      s.off("user:online");
+      s.off("user:offline");
     };
-  }, [target?.id, user.id]);
+  }, [target?.id]);
 
   return (
     <div className="chat-container">
-      {/* LEFT SIDEBAR */}
+      {/* ===== SIDEBAR ===== */}
       <div className="chat-sidebar">
         <h3 className="chat-title">รายชื่อผู้ติดต่อ</h3>
-
         {users.map((u) => (
           <button
             key={u.id}
@@ -152,71 +141,54 @@ export default function Chat({ user }) {
             }
             onClick={() => selectUser(u)}
           >
-            <div className="chat-user-info">
-              <span className={`status-dot ${onlineUsers.includes(u.id) ? "online" : ""}`}></span>
-              <div className="chat-user-name">{u.name}</div>
+            <span
+              className={`status-dot ${
+                onlineUsers.includes(u.id) ? "online" : ""
+              }`}
+            />
+            <div>
+              <div>{u.name}</div>
+              <div className="text-xs">{u.role}</div>
             </div>
-            <div className="chat-user-role">{u.role}</div>
           </button>
         ))}
       </div>
 
-      {/* MAIN CHAT WINDOW */}
+      {/* ===== CHAT ===== */}
       <div className="chat-main">
         {!target && (
-          <div className="text-sm" style={{ padding: 10 }}>
-            เลือกผู้ใช้จากทางซ้ายเพื่อเริ่มคุย
+          <div className="muted" style={{ padding: 12 }}>
+            เลือกผู้ใช้เพื่อเริ่มแชท
           </div>
         )}
 
         {target && (
           <>
             <div className="chat-header">
-              💬 คุยกับ {target.name}  
-              {onlineUsers.includes(target.id) ? (
-                <span className="online-text"> • ออนไลน์</span>
-              ) : (
-                <span className="offline-text"> • ออฟไลน์</span>
-              )}
+              💬 {target.name}
+              {onlineUsers.includes(target.id) ? " • ออนไลน์" : " • ออฟไลน์"}
             </div>
 
             <div className="chat-box">
-              {messages.map((m) => {
-                const textValue =
-                  m.content ||
-                  m.message ||
-                  m.message_text ||
-                  m.text ||
-                  m.body ||
-                  "";
-
-                const time =
-                  m.created_at || m.timestamp || m.time || "";
-
-                return (
-                  <div
-                    key={m.id}
-                    className={
-                      "chat-msg " +
-                      (m.sender_id === user.id
-                        ? "chat-msg-me"
-                        : "chat-msg-other")
-                    }
-                  >
-                    <div className="bubble-tail"></div>
-                    <div className="chat-msg-text">{textValue}</div>
-                    {time && <div className="chat-msg-time">{time}</div>}
-                  </div>
-                );
-              })}
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={
+                    "chat-msg " +
+                    (m.sender_id === user.id
+                      ? "chat-msg-me"
+                      : "chat-msg-other")
+                  }
+                >
+                  <div className="chat-msg-text">{m.content}</div>
+                </div>
+              ))}
 
               {typingUser && (
-                <div className="typing-indicator">
-                  กำลังพิมพ์...
-                </div>
+                <div className="typing-indicator">กำลังพิมพ์...</div>
               )}
 
-              <div ref={msgEndRef}></div>
+              <div ref={msgEndRef} />
             </div>
 
             <div className="chat-input-row">
@@ -228,7 +200,7 @@ export default function Chat({ user }) {
                 onKeyDown={handleKey}
               />
               <button className="btn-primary" onClick={sendMessage}>
-                ➤ ส่ง
+                ส่ง
               </button>
             </div>
           </>

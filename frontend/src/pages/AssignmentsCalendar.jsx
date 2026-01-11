@@ -25,7 +25,9 @@ export default function AssignmentsCalendar({ user, onOpenAssignment }) {
 
       const all = [];
       for (const subj of subjects) {
-        const r = await api.get(`/subjects/${subj.id}/assignments`);
+        const r = await api.get(`/subjects/${subj.id}/assignments`, {
+          params: { student_id: user.id },
+        });
         (r.data || []).forEach((a) => {
           if (a.deadline) {
             all.push({

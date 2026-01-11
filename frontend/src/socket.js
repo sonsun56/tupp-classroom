@@ -1,9 +1,12 @@
-// frontend/src/socket.js
+// src/socket.js
 import { io } from "socket.io-client";
-import api from "./api";
 
-const socket = io(api.defaults.baseURL || "http://localhost:4000", {
+const SOCKET_URL = import.meta.env.VITE_API_URL;
+
+const socket = io(SOCKET_URL, {
+  transports: ["websocket"],
   withCredentials: false,
+  autoConnect: true,
 });
 
 export default socket;
